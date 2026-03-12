@@ -3,7 +3,7 @@
 A ProcessWire module that tracks per-page resource usage and estimates the CO₂ emissions of every front-end request. Adds a **Setup → PageCarbon** page in the admin with live statistics, an hourly chart, and a ranked page table.
 
 **Author:** [Maxim Alex](https://smnv.org)
-**Version:** 1.0.0
+**Version:** 1.5.0
 **GitHub:** [mxmsmnv/PageCarbon](https://github.com/mxmsmnv/PageCarbon)
 
 ## Features
@@ -17,9 +17,11 @@ A ProcessWire module that tracks per-page resource usage and estimates the CO₂
 - **Daily maintenance** runs automatically: aggregates raw data into `page_carbon_hourly`, then prunes old raw rows
 - Hourly CO₂ bar chart for the last 24 hours (Chart.js with SVG fallback)
 - All-time totals combine raw + aggregate tables seamlessly
-- Top 20 pages table: CO₂ avg, range, exec time, response size, hits, rating, last seen
+- Top 50 pages table: CO₂ avg, range, exec time, response size, hits, rating, last seen
 - Manual controls: Flush buffer, Run maintenance, Clear all data
 - Storage info panel: raw row count, table size, retention window, last maintenance timestamp
+- **DOCX export** — one-click formatted report via pure-PHP `PageCarbonDocx` (no Composer, no Node.js)
+- **Frontend API** — `getStats($page)` and `renderBadge($page)` for use in templates
 
 ## Installation
 
@@ -36,6 +38,7 @@ A ProcessWire module that tracks per-page resource usage and estimates the CO₂
 PageCarbon/
 ├── PageCarbon.module.php   # Main module (extends Process)
 ├── PageCarbonConfig.php    # Config inputfields
+├── PageCarbonDocx.php      # Zero-dependency DOCX report generator
 ├── CHANGELOG.md
 └── README.md
 ```
@@ -84,6 +87,51 @@ Reference: the average web page produces ~500 mg CO₂ per view (Website Carbon 
 
 Bot sampling (default 1/10) reduces raw table volume significantly on high-traffic or heavily crawled sites.
 
+## DOCX export
+
+Click **Export DOCX** in the admin footer to download a formatted report. The report is generated entirely in PHP using `PageCarbonDocx.php` — a zero-dependency class that builds the `.docx` via `ZipArchive` (PHP built-in). No Composer, no Node.js required.
+
+The report includes:
+
+- Title block with site URL, date, and carbon intensity
+- Last 24-hour summary table (requests, human/bot split, CO₂, rating, exec time, response size)
+- All-time summary table (totals, collecting since, retention, intensity)
+- Top 50 pages by CO₂ with range, time, size, and rating badge (new page)
+- Rating scale reference table
+- Header (site name + date, right-aligned) and footer (page X of Y)
+
+## Frontend API
+
+Use in templates to display per-page CO₂ data.
+
+### `getStats(Page $page): ?array`
+
+Returns stats from the raw table for the given page (human requests only). Returns `null` if no data.
+
+Keys: `avg_co2_mg`, `min_co2_mg`, `max_co2_mg`, `avg_ms`, `avg_kb`, `hits`, `last_seen`, `rating` (A/B/C/D), `rating_color` (#hex).
+
+```php
+$pc    = $modules->get('PageCarbon');
+$stats = $pc->getStats($page);
+if($stats) {
+    echo $stats['avg_co2_mg'] . ' mg CO₂  ·  Rating ' . $stats['rating'];
+}
+```
+
+### `renderBadge(Page $page, string $style = 'full'): string`
+
+Returns a ready-made HTML badge. Returns `''` if no data.
+
+Styles: `full` (default), `compact`, `minimal`.
+
+```php
+$pc = $modules->get('PageCarbon');
+
+echo $pc->renderBadge($page);             // full — card with all stats
+echo $pc->renderBadge($page, 'compact');  // single-line pill
+echo $pc->renderBadge($page, 'minimal'); // inline label only
+```
+
 ## Bot detection
 
 The following User-Agent fragments are treated as bots:
@@ -93,7 +141,7 @@ The following User-Agent fragments are treated as bots:
 ## Requirements
 
 - ProcessWire ≥ 3.0.227
-- PHP ≥ 8.1
+- PHP ≥ 8.1 with `ZipArchive` extension (enabled by default in most PHP builds)
 - MySQL / MariaDB
 
 ## License

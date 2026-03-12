@@ -4,7 +4,7 @@
  * PageCarbon
  *
  * Tracks per-page resource usage and estimates CO₂ emissions.
- * Adds a "Carbon Footprint" page under Setup in the PW admin.
+ * Adds a PageCarbon page under Setup in the PW admin.
  *
  * Storage strategy:
  *   - Raw rows kept 90 days (configurable retention), then deleted
@@ -15,16 +15,16 @@
  *
  * @author  Maxim Alex <maxim@smnv.org> (smnv.org)
  * @link    https://github.com/mxmsmnv/PageCarbon
- * @version 1.0.0
+ * @version 1.5.0
  */
 class PageCarbon extends Process implements Module, ConfigurableModule {
 
-	// ── Module info ──────────────────────────────────────────────────────────
+	// ── Module info ───────────────────────────────────────────────────────────
 
 	public static function getModuleInfo(): array {
 		return [
 			'title'    => 'PageCarbon',
-			'version'  => 100,
+			'version'  => 150,
 			'summary'  => 'Tracks per-page CO₂ emissions. WireCache buffer, bot sampling, 90-day raw retention with permanent hourly aggregates.',
 			'author'   => 'Maxim Alex',
 			'href'     => 'https://github.com/mxmsmnv/PageCarbon',
@@ -33,7 +33,7 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 			'singular' => true,
 			'requires' => ['ProcessWire>=3.0.227', 'PHP>=8.1'],
 			'page'     => [
-				'name'   => 'carbon-footprint',
+				'name'   => 'carbon',
 				'parent' => 'setup',
 				'title'  => 'PageCarbon',
 			],
@@ -43,26 +43,26 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 	// ── Constants ─────────────────────────────────────────────────────────────
 
 	/** Raw data table — rows older than retention days are deleted */
-	const TABLE         = 'page_carbon';
+	const TABLE        = 'page_carbon';
 
 	/** Hourly aggregate table — permanent, compact */
-	const TABLE_HOURLY  = 'page_carbon_hourly';
+	const TABLE_HOURLY = 'page_carbon_hourly';
 
 	const DEFAULT_CARBON_INTENSITY = 436;
 	const ENERGY_PER_BYTE          = 0.00000000006;
 
-	const CACHE_BUFFER_KEY  = 'PageCarbon_buffer';
-	const CACHE_FLUSH_TS    = 'PageCarbon_last_flush';
-	const CACHE_MAINT_TS    = 'PageCarbon_last_maint';
+	const CACHE_BUFFER_KEY = 'PageCarbon_buffer';
+	const CACHE_FLUSH_TS   = 'PageCarbon_last_flush';
+	const CACHE_MAINT_TS   = 'PageCarbon_last_maint';
 
 	/** Seconds between batch INSERTs (1 hour) */
-	const FLUSH_INTERVAL    = 3600;
+	const FLUSH_INTERVAL = 3600;
 
 	/** Flush early when buffer reaches this many rows */
-	const FLUSH_MAX_ROWS    = 500;
+	const FLUSH_MAX_ROWS = 500;
 
 	/** Run maintenance (aggregation + pruning) at most once per day */
-	const MAINT_INTERVAL    = 86400;
+	const MAINT_INTERVAL = 86400;
 
 	// ── Known bot UA fragments ────────────────────────────────────────────────
 
@@ -83,14 +83,12 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 
 	public function init(): void {
 		parent::init();
-
 		$this->startTime   = defined('PROCESSWIRE_BOOT_TIME') ? (float) PROCESSWIRE_BOOT_TIME : microtime(true);
 		$this->startMemory = memory_get_usage(true);
-
 		$this->addHookAfter('Page::render', $this, 'hookPageRender');
 	}
 
-	// ── Process::execute ─────────────────────────────────────────────────────
+	// ── Process::execute ──────────────────────────────────────────────────────
 
 	public function ___execute(): string {
 		$this->headline('PageCarbon');
@@ -100,6 +98,11 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 		$cache = $this->wire('cache');
 		$db    = $this->wire('database');
 
+		// Export DOCX report
+		if($input->post('pcf_export') === '1' || $input->get('pcf_export') === '1') {
+			return $this->___executeExport();
+		}
+
 		// Clear all data
 		if($input->post('pcf_clear') === '1') {
 			$db->exec("TRUNCATE TABLE `" . self::TABLE . "`");
@@ -107,7 +110,7 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 			$cache->delete(self::CACHE_BUFFER_KEY);
 			$cache->delete(self::CACHE_FLUSH_TS);
 			$cache->delete(self::CACHE_MAINT_TS);
-			$this->wire('session')->message('All Carbon Footprint data cleared.');
+			$this->wire('session')->message('All PageCarbon data cleared.');
 			$this->wire('session')->redirect('./');
 		}
 
@@ -137,27 +140,27 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 			// ── Last 24 h — from raw table ────────────────────────────────────
 			$last24 = $db->query("
 				SELECT
-					COUNT(*)                          AS total_requests,
+					COUNT(*)                                  AS total_requests,
 					SUM(CASE WHEN is_bot=1 THEN 1 ELSE 0 END) AS bot_requests,
-					ROUND(SUM(co2_mg) / 1000, 4)     AS total_co2_g,
-					ROUND(AVG(co2_mg), 2)              AS avg_co2_mg,
-					ROUND(AVG(exec_ms), 1)             AS avg_ms,
-					ROUND(AVG(response_kb), 1)         AS avg_kb
+					ROUND(SUM(co2_mg) / 1000, 4)              AS total_co2_g,
+					ROUND(AVG(co2_mg), 2)                     AS avg_co2_mg,
+					ROUND(AVG(exec_ms), 1)                    AS avg_ms,
+					ROUND(AVG(response_kb), 1)                AS avg_kb
 				FROM `" . self::TABLE . "`
 				WHERE created >= NOW() - INTERVAL 24 HOUR
 			")->fetch(\PDO::FETCH_ASSOC);
 
-			// ── All-time totals — combine raw + hourly aggregate ──────────────
+			// ── All-time totals — hourly aggregate ────────────────────────────
 			$alltime = $db->query("
 				SELECT
-					SUM(requests)                         AS total_requests,
-					ROUND(SUM(co2_mg_sum) / 1000000, 6)  AS total_co2_kg,
-					ROUND(SUM(co2_mg_sum) / NULLIF(SUM(requests), 0), 2) AS avg_co2_mg,
-					MIN(hour_start)                       AS since
+					SUM(requests)                                              AS total_requests,
+					ROUND(SUM(co2_mg_sum) / 1000000, 6)                       AS total_co2_kg,
+					ROUND(SUM(co2_mg_sum) / NULLIF(SUM(requests), 0), 2)      AS avg_co2_mg,
+					MIN(hour_start)                                            AS since
 				FROM `" . self::TABLE_HOURLY . "`
 			")->fetch(\PDO::FETCH_ASSOC);
 
-			// Supplement all-time with raw rows not yet aggregated
+			// Supplement with raw rows not yet aggregated
 			$rawExtra = $db->query("
 				SELECT
 					COUNT(*)                          AS cnt,
@@ -167,57 +170,54 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 				FROM `" . self::TABLE . "`
 			")->fetch(\PDO::FETCH_ASSOC);
 
-			$totalRequests = (int)$alltime['total_requests'] + (int)$rawExtra['cnt'];
-			$totalCO2kg    = round((float)$alltime['total_co2_kg'] + (float)$rawExtra['co2_kg_raw'], 6);
+			$totalRequests = (int) $alltime['total_requests'] + (int) $rawExtra['cnt'];
+			$totalCO2kg    = round((float) $alltime['total_co2_kg'] + (float) $rawExtra['co2_kg_raw'], 6);
 			$avgCO2mg      = $totalRequests
-				? round(((float)$alltime['avg_co2_mg'] * (int)$alltime['total_requests']
-				       + (float)$rawExtra['co2_mg_sum'])
+				? round(((float) $alltime['avg_co2_mg'] * (int) $alltime['total_requests']
+				       + (float) $rawExtra['co2_mg_sum'])
 				       / $totalRequests, 2)
 				: 0;
-			$since = min(
-				array_filter([$alltime['since'], $rawExtra['since_raw']])
-			) ?: null;
+			$sinceArr = array_filter([$alltime['since'], $rawExtra['since_raw']]);
+			$since    = $sinceArr ? min($sinceArr) : null;
 
-			// ── Top 20 pages — from raw table (recent 90 days) ───────────────
+			// ── Top 50 pages — human, raw table ──────────────────────────────
 			$retention = max(1, (int) ($this->get('retention_days') ?: 90));
 			$pages = $db->query("
 				SELECT
 					page_path, page_title,
-					COUNT(*)                  AS hits,
-					ROUND(AVG(co2_mg), 2)     AS avg_co2,
-					ROUND(MIN(co2_mg), 2)     AS min_co2,
-					ROUND(MAX(co2_mg), 2)     AS max_co2,
-					ROUND(AVG(exec_ms), 1)    AS avg_ms,
-					ROUND(AVG(response_kb),1) AS avg_kb,
-					MAX(created)              AS last_seen
+					COUNT(*)                   AS hits,
+					ROUND(AVG(co2_mg), 2)      AS avg_co2,
+					ROUND(MIN(co2_mg), 2)      AS min_co2,
+					ROUND(MAX(co2_mg), 2)      AS max_co2,
+					ROUND(AVG(exec_ms), 1)     AS avg_ms,
+					ROUND(AVG(response_kb), 1) AS avg_kb,
+					MAX(created)               AS last_seen
 				FROM `" . self::TABLE . "`
 				WHERE is_bot = 0
 				  AND created >= NOW() - INTERVAL {$retention} DAY
 				GROUP BY page_path, page_title
 				ORDER BY avg_co2 DESC
-				LIMIT 20
+				LIMIT 50
 			")->fetchAll(\PDO::FETCH_ASSOC);
 
-			// ── Hourly trend — last 24 h, raw table ──────────────────────────
+			// ── Hourly trend — last 24 h ──────────────────────────────────────
 			$trend = $db->query("
 				SELECT
-					DATE_FORMAT(created, '%H:00')    AS hour,
-					ROUND(SUM(co2_mg) / 1000, 4)    AS co2_g,
-					COUNT(*)                          AS hits
+					DATE_FORMAT(created, '%H:00')  AS hour,
+					ROUND(SUM(co2_mg) / 1000, 4)  AS co2_g,
+					COUNT(*)                        AS hits
 				FROM `" . self::TABLE . "`
 				WHERE created >= NOW() - INTERVAL 24 HOUR
 				GROUP BY DATE_FORMAT(created, '%Y-%m-%d %H')
 				ORDER BY created ASC
 			")->fetchAll(\PDO::FETCH_ASSOC);
 
-			// ── Raw table stats ───────────────────────────────────────────────
+			// ── Raw table storage stats ───────────────────────────────────────
 			$rawStats = $db->query("
 				SELECT
-					COUNT(*)                 AS row_count,
-					MIN(created)             AS oldest,
-					ROUND(
-						data_length + index_length, 0
-					) AS bytes
+					COUNT(*)   AS row_count,
+					MIN(created) AS oldest,
+					ROUND(data_length + index_length, 0) AS bytes
 				FROM information_schema.TABLES, `" . self::TABLE . "`
 				WHERE table_schema = DATABASE()
 				  AND table_name   = '" . self::TABLE . "'
@@ -229,7 +229,7 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 			return '<div class="uk-alert uk-alert-danger" uk-alert><p>Database error: ' . htmlspecialchars($e->getMessage()) . '</p></div>';
 		}
 
-		$noData = !$totalRequests && !(int)($last24['total_requests'] ?? 0);
+		$noData = !$totalRequests && !(int) ($last24['total_requests'] ?? 0);
 		if($noData) {
 			return '<div class="uk-alert uk-alert-primary" uk-alert>
 				<p>🌿 <strong>No data yet.</strong> Visit a few front-end pages, then refresh — metrics will appear here within an hour (or press Flush buffer).</p>
@@ -237,13 +237,13 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 		}
 
 		// ── Prepare display values ────────────────────────────────────────────
-		$sinceFmt    = $since ? date('d M Y, H:i', strtotime($since)) : '—';
-		$totalBadge  = $this->co2Badge((float) ($last24['avg_co2_mg'] ?? 0));
-		$botReq      = (int) ($last24['bot_requests'] ?? 0);
-		$humanReq    = (int) ($last24['total_requests'] ?? 0) - $botReq;
-		$botSample   = max(1, (int) ($this->get('bot_sample_rate') ?: 10));
-		$intensity   = (int) ($this->get('carbon_intensity') ?: self::DEFAULT_CARBON_INTENSITY);
-		$moduleUrl   = $this->wire('config')->urls->admin . 'module/edit?name=PageCarbon';
+		$sinceFmt   = $since ? date('d M Y, H:i', strtotime($since)) : '—';
+		$totalBadge = $this->co2Badge((float) ($last24['avg_co2_mg'] ?? 0));
+		$botReq     = (int) ($last24['bot_requests'] ?? 0);
+		$humanReq   = (int) ($last24['total_requests'] ?? 0) - $botReq;
+		$botSample  = max(1, (int) ($this->get('bot_sample_rate') ?: 10));
+		$intensity  = (int) ($this->get('carbon_intensity') ?: self::DEFAULT_CARBON_INTENSITY);
+		$moduleUrl  = $this->wire('config')->urls->admin . 'module/edit?name=PageCarbon';
 
 		// Buffer status
 		$rawBuf      = $this->wire('cache')->get(self::CACHE_BUFFER_KEY);
@@ -252,9 +252,9 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 		$nextFlush   = $lastFlushTs ? date('H:i', $lastFlushTs + self::FLUSH_INTERVAL) : 'soon';
 
 		// Table size
-		$rawRowCount  = number_format((int) ($rawStats['row_count'] ?? 0));
-		$rawTableMB   = isset($rawStats['bytes']) ? round($rawStats['bytes'] / 1048576, 2) : '?';
-		$rawOldest    = isset($rawStats['oldest']) ? date('d M Y', strtotime($rawStats['oldest'])) : '—';
+		$rawRowCount = number_format((int) ($rawStats['row_count'] ?? 0));
+		$rawTableMB  = isset($rawStats['bytes']) ? round($rawStats['bytes'] / 1048576, 2) : '?';
+		$rawOldest   = isset($rawStats['oldest']) ? date('d M Y', strtotime($rawStats['oldest'])) : '—';
 
 		// Last maint
 		$lastMaintTs  = (int) ($this->wire('cache')->get(self::CACHE_MAINT_TS) ?: 0);
@@ -281,12 +281,12 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 				</tr>";
 		}
 
-		// Trend chart — fill all 24 h
+		// Trend chart — fill all 24 h with zeros for missing hours
 		$trendMap = [];
 		foreach($trend as $t) $trendMap[$t['hour']] = (float) $t['co2_g'];
 		$allHours = []; $allVals = [];
 		for($h = 0; $h < 24; $h++) {
-			$label = sprintf('%02d:00', $h);
+			$label      = sprintf('%02d:00', $h);
 			$allHours[] = $label;
 			$allVals[]  = $trendMap[$label] ?? 0;
 		}
@@ -351,11 +351,6 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 }
 #pcf-wrap .pcf-meta { font-size:11px;color:#aaa;line-height:1.8 }
 #pcf-wrap .pcf-btns { display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap }
-#pcf-wrap .pcf-info {
-	background:#f7f9fc;border:1px solid #e5e5e5;border-radius:4px;
-	padding:12px 14px;font-size:12px;color:#666;line-height:1.7;margin-top:10px
-}
-#pcf-wrap .pcf-info strong { color:#333 }
 </style>
 
 <div id="pcf-wrap">
@@ -433,7 +428,7 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 	</div>
 
 	<!-- ── Top pages table ── -->
-	<div class="pcf-section" style="margin-top:28px">Top pages by CO₂ — human requests, last {$retention} days</div>
+	<div class="pcf-section" style="margin-top:28px">Top 50 pages by CO₂ — human requests, last {$retention} days</div>
 	<div style="overflow-x:auto">
 		<table class="pcf-table">
 			<thead>
@@ -458,21 +453,27 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 			<span>Model: <a href="https://sustainablewebdesign.org/estimating-digital-emissions/" target="_blank" rel="noopener" style="color:#007aff">Sustainable Web Design v4</a>
 			&middot; Intensity: {$intensity} gCO₂/kWh
 			&middot; A &lt;100 mg &middot; B &lt;300 mg &middot; C &lt;700 mg &middot; D ≥700 mg</span><br>
-			<span>Buffer: <strong style="color:#333">{$bufCount}</strong> pending rows &middot; Next auto-flush at <strong style="color:#333">{$nextFlush}</strong> (hourly) &middot; Bot sampling: 1/{$botSample}</span>
+			<span>Buffer: <strong style="color:#333">{$bufCount}</strong> pending rows
+			&middot; Next auto-flush at <strong style="color:#333">{$nextFlush}</strong> (hourly)
+			&middot; Bot sampling: 1/{$botSample}</span>
 		</div>
 		<div class="pcf-btns">
-			<a href="{$moduleUrl}" class="uk-button uk-button-primary uk-button-small">⚙ Settings</a>
+			<a href="{$moduleUrl}" class="uk-button uk-button-primary"><span uk-icon="icon:settings;ratio:0.8"></span> Settings</a>
 			<form method="post" style="margin:0">
 				<input type="hidden" name="pcf_flush" value="1">
-				<button type="submit" class="uk-button uk-button-primary uk-button-small">↑ Flush buffer</button>
+				<button type="submit" class="uk-button uk-button-primary"><span uk-icon="icon:upload;ratio:0.8"></span> Flush buffer</button>
 			</form>
 			<form method="post" style="margin:0">
 				<input type="hidden" name="pcf_maint" value="1">
-				<button type="submit" class="uk-button uk-button-primary uk-button-small">⚙ Run maintenance</button>
+				<button type="submit" class="uk-button uk-button-primary"><span uk-icon="icon:cog;ratio:0.8"></span> Run maintenance</button>
+			</form>
+			<form method="post" style="margin:0">
+				<input type="hidden" name="pcf_export" value="1">
+				<button type="submit" class="uk-button uk-button-primary"><span uk-icon="icon:download;ratio:0.8"></span> Export DOCX</button>
 			</form>
 			<form method="post" style="margin:0" onsubmit="return confirm('Delete ALL data including aggregates? This cannot be undone.')">
 				<input type="hidden" name="pcf_clear" value="1">
-				<button type="submit" class="uk-button uk-button-primary uk-button-small">✕ Clear all data</button>
+				<button type="submit" class="uk-button uk-button-primary"><span uk-icon="icon:trash;ratio:0.8"></span> Clear all data</button>
 			</form>
 		</div>
 	</div>
@@ -663,8 +664,7 @@ HTML;
 		$retention = max(1, (int) ($this->get('retention_days') ?: 90));
 
 		try {
-			// Aggregate raw rows older than 24 h (not yet aggregated) into hourly table
-			// Using INSERT ... ON DUPLICATE KEY UPDATE to merge safely
+			// Aggregate raw rows older than 24 h into hourly table
 			$db->exec("
 				INSERT INTO `" . self::TABLE_HOURLY . "`
 					(page_path, page_title, hour_start, requests, co2_mg_sum, co2_mg_avg,
@@ -674,10 +674,10 @@ HTML;
 					page_title,
 					DATE_FORMAT(created, '%Y-%m-%d %H:00:00') AS hour_start,
 					COUNT(*)                                   AS requests,
-					ROUND(SUM(co2_mg), 4)                      AS co2_mg_sum,
-					ROUND(AVG(co2_mg), 4)                      AS co2_mg_avg,
-					ROUND(AVG(exec_ms), 2)                     AS exec_ms_avg,
-					ROUND(AVG(response_kb), 3)                 AS response_kb_avg,
+					ROUND(SUM(co2_mg), 4)                     AS co2_mg_sum,
+					ROUND(AVG(co2_mg), 4)                     AS co2_mg_avg,
+					ROUND(AVG(exec_ms), 2)                    AS exec_ms_avg,
+					ROUND(AVG(response_kb), 3)                AS response_kb_avg,
 					is_bot
 				FROM `" . self::TABLE . "`
 				WHERE created < NOW() - INTERVAL 24 HOUR
@@ -715,13 +715,198 @@ HTML;
 		return round(($transferEnergy + $cpuEnergy + $memEnergy) * $intensity * 1000, 4);
 	}
 
-	// ── CO₂ badge ─────────────────────────────────────────────────────────────
+	// ── CO₂ rating badge ──────────────────────────────────────────────────────
 
 	protected function co2Badge(float $mg): string {
 		if($mg < 100) return '<span class="uk-badge" style="background:#38a169;padding:3px 8px">A</span>';
 		if($mg < 300) return '<span class="uk-badge" style="background:#d69e2e;padding:3px 8px">B</span>';
 		if($mg < 700) return '<span class="uk-badge" style="background:#dd6b20;padding:3px 8px">C</span>';
 		return '<span class="uk-badge" style="background:#e53e3e;padding:3px 8px">D</span>';
+	}
+
+	// ── DOCX Export ───────────────────────────────────────────────────────────
+
+	public function ___executeExport(): string {
+		$db        = $this->wire('database');
+		$config    = $this->wire('config');
+		$retention = max(1, (int) ($this->get('retention_days') ?: 90));
+		$intensity = (int) ($this->get('carbon_intensity') ?: self::DEFAULT_CARBON_INTENSITY);
+
+		try {
+			$last24 = $db->query("
+				SELECT
+					COUNT(*) AS total_requests,
+					SUM(CASE WHEN is_bot=1 THEN 1 ELSE 0 END) AS bot_requests,
+					ROUND(SUM(co2_mg)/1000,4)  AS total_co2_g,
+					ROUND(AVG(co2_mg),2)        AS avg_co2_mg,
+					ROUND(AVG(exec_ms),1)       AS avg_ms,
+					ROUND(AVG(response_kb),1)   AS avg_kb
+				FROM `" . self::TABLE . "`
+				WHERE created >= NOW() - INTERVAL 24 HOUR
+			")->fetch(\PDO::FETCH_ASSOC);
+
+			$hourlySum = $db->query("
+				SELECT SUM(requests) AS reqs,
+				       ROUND(SUM(co2_mg_sum)/1000000,6) AS co2_kg,
+				       ROUND(SUM(co2_mg_sum)/NULLIF(SUM(requests),0),2) AS avg_mg,
+				       MIN(hour_start) AS since
+				FROM `" . self::TABLE_HOURLY . "`
+			")->fetch(\PDO::FETCH_ASSOC);
+
+			$rawSum = $db->query("
+				SELECT COUNT(*) AS cnt,
+				       ROUND(SUM(co2_mg)/1000000,10) AS co2_kg,
+				       ROUND(AVG(co2_mg),2) AS avg_mg,
+				       MIN(created) AS since
+				FROM `" . self::TABLE . "`
+			")->fetch(\PDO::FETCH_ASSOC);
+
+			$totalReqs  = (int) $hourlySum['reqs'] + (int) $rawSum['cnt'];
+			$totalCO2kg = round((float) $hourlySum['co2_kg'] + (float) $rawSum['co2_kg'], 6);
+			$avgCO2mg   = $totalReqs ? round(
+				((float) $hourlySum['avg_mg'] * (int) $hourlySum['reqs']
+				+ (float) $rawSum['avg_mg']   * (int) $rawSum['cnt']) / $totalReqs, 2
+			) : 0;
+			$since = array_filter([$hourlySum['since'], $rawSum['since']]);
+			$since = $since ? date('d M Y, H:i', strtotime(min($since))) : '—';
+
+			$pages = $db->query("
+				SELECT page_path, page_title,
+				       COUNT(*) AS hits,
+				       ROUND(AVG(co2_mg),2) AS avg_co2,
+				       ROUND(MIN(co2_mg),2) AS min_co2,
+				       ROUND(MAX(co2_mg),2) AS max_co2,
+				       ROUND(AVG(exec_ms),1) AS avg_ms,
+				       ROUND(AVG(response_kb),1) AS avg_kb
+				FROM `" . self::TABLE . "`
+				WHERE is_bot=0 AND created >= NOW() - INTERVAL {$retention} DAY
+				GROUP BY page_path, page_title
+				ORDER BY avg_co2 DESC LIMIT 50
+			")->fetchAll(\PDO::FETCH_ASSOC);
+
+		} catch(\Exception $e) {
+			return '<div class="uk-alert uk-alert-danger" uk-alert><p>Export error: ' . htmlspecialchars($e->getMessage()) . '</p></div>';
+		}
+
+		require_once __DIR__ . '/PageCarbonDocx.php';
+
+		$docx = new PageCarbonDocx([
+			'site_url'        => $config->urls->root,
+			'site_name'       => $config->httpHost,
+			'generated_at'    => date('c'),
+			'intensity'       => $intensity,
+			'retention_days'  => $retention,
+			'summary_24h'     => $last24,
+			'summary_alltime' => [
+				'total_requests' => $totalReqs,
+				'total_co2_kg'   => $totalCO2kg,
+				'avg_co2_mg'     => $avgCO2mg,
+				'since'          => $since,
+			],
+			'top_pages' => $pages,
+		]);
+
+		ob_end_clean();
+		$docx->download('pagecarbon-report-' . date('Y-m-d') . '.docx');
+		return ''; // never reached
+	}
+
+	// ── Frontend API ──────────────────────────────────────────────────────────
+
+	/**
+	 * Get CO₂ stats for a given page from the raw table.
+	 * Returns null if no data exists for that page.
+	 *
+	 * Keys: avg_co2_mg, min_co2_mg, max_co2_mg, avg_ms, avg_kb,
+	 *       hits, last_seen, rating (A/B/C/D), rating_color (#hex)
+	 *
+	 * Usage:
+	 *   $stats = $modules->get('PageCarbon')->getStats($page);
+	 *   if($stats) echo $stats['avg_co2_mg'] . ' mg CO₂ · Rating ' . $stats['rating'];
+	 */
+	public function getStats(\ProcessWire\Page $page): ?array {
+		$db = $this->wire('database');
+		try {
+			$stmt = $db->prepare("
+				SELECT
+					ROUND(AVG(co2_mg), 2)      AS avg_co2_mg,
+					ROUND(MIN(co2_mg), 2)      AS min_co2_mg,
+					ROUND(MAX(co2_mg), 2)      AS max_co2_mg,
+					ROUND(AVG(exec_ms), 1)     AS avg_ms,
+					ROUND(AVG(response_kb), 1) AS avg_kb,
+					COUNT(*)                   AS hits,
+					MAX(created)               AS last_seen
+				FROM `" . self::TABLE . "`
+				WHERE page_path = :path AND is_bot = 0
+			");
+			$stmt->execute([':path' => $page->path]);
+			$row = $stmt->fetch(\PDO::FETCH_ASSOC);
+		} catch(\Exception $e) {
+			return null;
+		}
+
+		if(!$row || !(int) $row['hits']) return null;
+
+		$mg = (float) $row['avg_co2_mg'];
+		$row['rating'] = match(true) {
+			$mg < 100 => 'A',
+			$mg < 300 => 'B',
+			$mg < 700 => 'C',
+			default   => 'D',
+		};
+		$row['rating_color'] = match($row['rating']) {
+			'A' => '#38a169',
+			'B' => '#d69e2e',
+			'C' => '#dd6b20',
+			default => '#e53e3e',
+		};
+
+		return $row;
+	}
+
+	/**
+	 * Render a ready-made HTML badge for a page.
+	 *
+	 * @param \ProcessWire\Page $page
+	 * @param string            $style  'full' | 'compact' | 'minimal'
+	 *
+	 * Usage:
+	 *   echo $modules->get('PageCarbon')->renderBadge($page);
+	 *   echo $modules->get('PageCarbon')->renderBadge($page, 'compact');
+	 */
+	public function renderBadge(\ProcessWire\Page $page, string $style = 'full'): string {
+		$stats = $this->getStats($page);
+		if(!$stats) return '';
+
+		$mg    = $stats['avg_co2_mg'];
+		$r     = $stats['rating'];
+		$color = $stats['rating_color'];
+
+		return match($style) {
+			'minimal' =>
+				"<span style='display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#666'>"
+				. "🌿 {$mg} mg CO₂"
+				. "<span style='background:{$color};color:#fff;border-radius:3px;padding:1px 6px;font-size:11px;font-weight:700'>{$r}</span>"
+				. "</span>",
+
+			'compact' =>
+				"<span style='display:inline-flex;align-items:center;gap:6px;font-size:13px;"
+				. "background:#f7f9f7;border:1px solid #ddd;border-radius:4px;padding:4px 10px;color:#444'>"
+				. "🌿 <strong>{$mg} mg</strong> CO₂"
+				. "<span style='background:{$color};color:#fff;border-radius:3px;padding:2px 7px;font-size:11px;font-weight:700'>{$r}</span>"
+				. "</span>",
+
+			default =>
+				"<div style='display:inline-flex;align-items:center;gap:10px;"
+				. "background:#f7faf7;border:1px solid #d4e8d4;border-radius:6px;"
+				. "padding:8px 14px;font-size:13px;color:#444;line-height:1.4'>"
+				. "<span style='font-size:20px'>🌿</span>"
+				. "<span><strong style='font-size:15px;color:#222'>{$mg} mg</strong> CO₂ per visit"
+				. "<br><span style='font-size:11px;color:#888'>{$stats['hits']} samples · {$stats['avg_ms']} ms · {$stats['avg_kb']} KB</span></span>"
+				. "<span style='background:{$color};color:#fff;border-radius:4px;"
+				. "padding:4px 10px;font-weight:700;font-size:14px'>{$r}</span>"
+				. "</div>",
+		};
 	}
 
 	// ── Install / Uninstall ───────────────────────────────────────────────────
