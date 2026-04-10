@@ -8,6 +8,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.6.0] — 2026-04-09
+
+### Added
+
+- **Real-world analogies panel** — all-time CO₂ total rendered as 12 everyday equivalents displayed as a `uk-card` grid (4 per row, 2 on mobile); analogies: car km, espressos, kettles boiled, phone charges, Netflix HD hours, emails sent, trees needed for 1 year, LED bulb hours, subway trips, songs streamed on Spotify, short-haul flights, Google searches
+- Each analogy card uses an inline **Heroicons** (outline) or **Bootstrap Icons** SVG, coloured via `--pw-main-color`
+
+### Changed
+
+- Admin dashboard fully migrated to **AdminThemeUikit** native components: `uk-card`, `uk-grid`, `uk-child-width-*`, `uk-table`, `uk-button`, `uk-overflow-auto`, `uk-flex`, `uk-text-meta`, `uk-text-uppercase` — custom `#pcf-wrap` CSS grid removed
+- Stat cards now have fixed `height: 80px` with `display:flex` centering — font size no longer affects row height
+- **Chart.js** loaded on demand via dynamic `<script>` injection (cdn.jsdelivr.net); falls back to inline SVG bars if network unavailable; `animation: false` replaced with `{ duration: 500, easing: 'easeOutQuart' }`
+- Bar chart colours read from `--pw-main-color` CSS custom property (hex parsed to RGB at runtime); SVG fallback uses the same colour
+- Footer buttons: `uk-button-danger` applied to Clear all data; Export DOCX uses `uk-button-primary`; all buttons sized `uk-button-small`
+
+---
+
 ## [1.5.0] — 2026-03-12
 
 ### Added

@@ -1,9 +1,9 @@
 # PageCarbon
 
-A ProcessWire module that tracks per-page resource usage and estimates the CO₂ emissions of every front-end request. Adds a **Setup → PageCarbon** page in the admin with live statistics, an hourly chart, and a ranked page table.
+A ProcessWire module that tracks per-page resource usage and estimates the CO₂ emissions of every front-end request. Adds a **Setup → PageCarbon** page in the admin with live statistics, an hourly chart, a ranked page table, and real-world CO₂ analogies.
 
 **Author:** [Maxim Alex](https://smnv.org)
-**Version:** 1.5.0
+**Version:** 1.6.0
 **GitHub:** [mxmsmnv/PageCarbon](https://github.com/mxmsmnv/PageCarbon)
 
 ## Features
@@ -15,13 +15,15 @@ A ProcessWire module that tracks per-page resource usage and estimates the CO₂
 - **Bot sampling** — only 1-in-N bot requests are recorded; human requests always recorded in full
 - **90-day raw retention** — raw rows are pruned automatically; historical data is preserved forever in a compact hourly aggregate table
 - **Daily maintenance** runs automatically: aggregates raw data into `page_carbon_hourly`, then prunes old raw rows
-- Hourly CO₂ bar chart for the last 24 hours (Chart.js with SVG fallback)
+- Hourly CO₂ bar chart for the last 24 hours (Chart.js loaded on demand, SVG fallback if unavailable)
 - All-time totals combine raw + aggregate tables seamlessly
+- **Real-world analogies** — all-time CO₂ total translated into 12 everyday equivalents (car km, espressos, kettles, phone charges, Netflix hours, emails, trees, LED bulb hours, subway trips, songs streamed, flights, Google searches)
 - Top 50 pages table: CO₂ avg, range, exec time, response size, hits, rating, last seen
 - Manual controls: Flush buffer, Run maintenance, Clear all data
 - Storage info panel: raw row count, table size, retention window, last maintenance timestamp
 - **DOCX export** — one-click formatted report via pure-PHP `PageCarbonDocx` (no Composer, no Node.js)
 - **Frontend API** — `getStats($page)` and `renderBadge($page)` for use in templates
+- Full **AdminThemeUikit** integration — native `uk-card`, `uk-grid`, `uk-table`, `uk-button` throughout; respects `--pw-main-color` CSS variable including dark mode
 
 ## Installation
 
@@ -67,6 +69,25 @@ Default carbon intensity: **436 gCO₂eq/kWh** (world average). Adjust in module
 | 🔴 **D** | ≥ 700 mg | Heavy |
 
 Reference: the average web page produces ~500 mg CO₂ per view (Website Carbon Calculator, 2024).
+
+## Real-world analogies
+
+The dashboard displays all-time CO₂ totals translated into 12 everyday equivalents. Coefficients used:
+
+| Analogy | Coefficient | Source |
+|---------|-------------|--------|
+| 🚗 Driving by car | 120 g CO₂/km | EU average petrol car |
+| ☕ Espressos brewed | 28 g CO₂/cup | LCA studies |
+| 🫖 Kettles boiled | 32 g CO₂/litre | UK grid avg |
+| 📱 Phone charges | 8.2 g CO₂/charge | IEA estimate |
+| 🎬 Netflix HD streaming | 36 g CO₂/hour | Carbon Trust 2023 |
+| 📧 Emails sent | 4 g CO₂/email | Mike Berners-Lee |
+| 🌳 Trees needed (1 year) | 21 000 g CO₂/year | avg deciduous tree |
+| 💡 LED bulb on | 0.012 g CO₂/hour | 10W, world avg grid |
+| 🚇 Subway trips | 35 g CO₂/trip | IEA urban transit avg |
+| 🎵 Songs streamed | 0.028 g CO₂/song | Spotify sustainability report |
+| ✈️ Short-haul flights | 255 000 g CO₂/flight | ICAO economy class |
+| 🔍 Google searches | 0.2 g CO₂/search | Google Environmental Report |
 
 ## Settings
 
@@ -129,7 +150,7 @@ $pc = $modules->get('PageCarbon');
 
 echo $pc->renderBadge($page);             // full — card with all stats
 echo $pc->renderBadge($page, 'compact');  // single-line pill
-echo $pc->renderBadge($page, 'minimal'); // inline label only
+echo $pc->renderBadge($page, 'minimal');  // inline label only
 ```
 
 ## Bot detection

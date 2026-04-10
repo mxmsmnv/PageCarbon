@@ -15,7 +15,7 @@
  *
  * @author  Maxim Alex <maxim@smnv.org> (smnv.org)
  * @link    https://github.com/mxmsmnv/PageCarbon
- * @version 1.5.0
+ * @version 1.6.0
  */
 class PageCarbon extends Process implements Module, ConfigurableModule {
 
@@ -24,7 +24,7 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 	public static function getModuleInfo(): array {
 		return [
 			'title'    => 'PageCarbon',
-			'version'  => 150,
+			'version'  => 160,
 			'summary'  => 'Tracks per-page CO₂ emissions. WireCache buffer, bot sampling, 90-day raw retention with permanent hourly aggregates.',
 			'author'   => 'Maxim Alex',
 			'href'     => 'https://github.com/mxmsmnv/PageCarbon',
@@ -174,8 +174,8 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 			$totalCO2kg    = round((float) $alltime['total_co2_kg'] + (float) $rawExtra['co2_kg_raw'], 6);
 			$avgCO2mg      = $totalRequests
 				? round(((float) $alltime['avg_co2_mg'] * (int) $alltime['total_requests']
-				       + (float) $rawExtra['co2_mg_sum'])
-				       / $totalRequests, 2)
+					   + (float) $rawExtra['co2_mg_sum'])
+					   / $totalRequests, 2)
 				: 0;
 			$sinceArr = array_filter([$alltime['since'], $rawExtra['since_raw']]);
 			$since    = $sinceArr ? min($sinceArr) : null;
@@ -269,15 +269,15 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 				<tr>
 					<td>
 						<a href='{$p['page_path']}' target='_blank' rel='noopener'><strong>{$p['page_title']}</strong></a>
-						<br><span style='font-size:11px;color:#aaa'>{$p['page_path']}</span>
+						<br><span class='uk-text-meta uk-text-small'>{$p['page_path']}</span>
 					</td>
-					<td class='pcf-tr'>{$p['avg_co2']}</td>
-					<td class='pcf-tr' style='color:#aaa;font-size:12px'>{$p['min_co2']} – {$p['max_co2']}</td>
-					<td class='pcf-tr'>{$p['avg_ms']}</td>
-					<td class='pcf-tr'>{$p['avg_kb']}</td>
-					<td class='pcf-tr'>{$p['hits']}</td>
-					<td style='text-align:center'>{$badge}</td>
-					<td style='font-size:12px;color:#aaa'>{$lastSeen}</td>
+					<td class='uk-text-right'>{$p['avg_co2']}</td>
+					<td class='uk-text-right uk-text-meta uk-text-small'>{$p['min_co2']} – {$p['max_co2']}</td>
+					<td class='uk-text-right'>{$p['avg_ms']}</td>
+					<td class='uk-text-right'>{$p['avg_kb']}</td>
+					<td class='uk-text-right'>{$p['hits']}</td>
+					<td class='uk-text-center'>{$badge}</td>
+					<td class='uk-text-meta uk-text-small'>{$lastSeen}</td>
 				</tr>";
 		}
 
@@ -294,152 +294,189 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 		$trendLabels = json_encode($allHours);
 		$hasAnyData  = (bool) array_sum($allVals);
 
+		// ── Real-world analogies for total CO₂ ──────────────────────────────
+		$co2g      = $totalCO2kg * 1000;
+		$carKm     = round($co2g / 120, 1);      // petrol car avg EU
+		$coffees   = (int) round($co2g / 28);    // espresso
+		$kettles   = (int) round($co2g / 32);    // 1L boil
+		$phones    = (int) round($co2g / 8.2);   // smartphone full charge
+		$netflix   = round($co2g / 36, 1);       // Netflix HD 1h
+		$emails    = (int) round($co2g / 4);     // plain email
+		$trees     = round($co2g / 21000, 2);    // tree absorbs ~21 kg/yr
+		$bulbHours = (int) round($co2g / 0.012); // LED 10W, avg grid
+		$subway    = (int) round($co2g / 35);    // metro/subway 1 trip ~35g
+		$spotify   = (int) round($co2g / 0.028); // Spotify stream 1 song ~0.028g
+		$flights   = round($co2g / 255000, 4);   // short-haul economy 255kg
+		$searches  = (int) round($co2g / 0.2);   // Google search ~0.2g
+
 		return <<<HTML
 <style>
-#pcf-wrap {
-	--pcf-val: 1.5rem;
-	--pcf-lbl: 0.72rem;
+.pcf-card {
+	height:80px;
+	display:flex;flex-direction:column;align-items:center;justify-content:center;
+	padding:0 12px;box-sizing:border-box;overflow:hidden
 }
-#pcf-wrap .pcf-card {
-	background:#fff;
-	border:1px solid #e5e5e5;
-	border-radius:4px;
-	padding:16px 12px 14px;
-	text-align:center;
-	display:flex;
-	flex-direction:column;
-	align-items:center;
-	justify-content:center;
-	min-height:78px;
-	box-sizing:border-box;
-}
-#pcf-wrap .pcf-val  { font-size:var(--pcf-val);font-weight:700;line-height:1.15;color:#1a1a1a;white-space:nowrap }
-#pcf-wrap .pcf-lbl  { font-size:var(--pcf-lbl);color:#999;margin-top:5px;line-height:1.3 }
-#pcf-wrap .pcf-section {
-	font-size:0.68rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
-	color:#bbb;border-bottom:1px solid #e5e5e5;padding-bottom:6px;margin:24px 0 12px;
-}
-#pcf-wrap .pcf-section:first-child { margin-top:0 }
-#pcf-wrap .pcf-grid { display:grid;gap:10px }
-#pcf-wrap .pcf-g5   { grid-template-columns:repeat(5,1fr) }
-#pcf-wrap .pcf-g4   { grid-template-columns:repeat(4,1fr) }
-#pcf-wrap .pcf-g3   { grid-template-columns:repeat(3,1fr) }
-@media(max-width:900px){
-	#pcf-wrap .pcf-g5,#pcf-wrap .pcf-g4 { grid-template-columns:repeat(3,1fr) }
-}
-@media(max-width:600px){
-	#pcf-wrap .pcf-g5,#pcf-wrap .pcf-g4,#pcf-wrap .pcf-g3 { grid-template-columns:repeat(2,1fr) }
-}
-#pcf-wrap .pcf-chart {
-	background:#fff;border:1px solid #e5e5e5;border-radius:4px;
-	padding:12px 14px 10px;margin-top:10px;
-}
-#pcf-wrap table.pcf-table { width:100%;border-collapse:collapse;font-size:13px;margin-top:10px }
-#pcf-wrap table.pcf-table th {
-	text-align:left;padding:8px 10px;font-size:11px;font-weight:600;
-	text-transform:uppercase;letter-spacing:.04em;color:#aaa;
-	border-bottom:2px solid #e5e5e5;white-space:nowrap
-}
-#pcf-wrap table.pcf-table td  { padding:9px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle }
-#pcf-wrap table.pcf-table tbody tr:hover td { background:#fafafa }
-#pcf-wrap table.pcf-table a   { color:#007aff;text-decoration:none }
-#pcf-wrap table.pcf-table a:hover { text-decoration:underline }
-#pcf-wrap .pcf-tr  { text-align:right }
-#pcf-wrap .pcf-footer {
-	display:flex;justify-content:space-between;align-items:flex-end;
-	flex-wrap:wrap;gap:10px;margin-top:20px;padding-top:14px;border-top:1px solid #e5e5e5
-}
-#pcf-wrap .pcf-meta { font-size:11px;color:#aaa;line-height:1.8 }
-#pcf-wrap .pcf-btns { display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap }
+.pcf-stat-val { font-size:1.35rem;font-weight:700;line-height:1.2;margin:0;white-space:nowrap }
+.pcf-stat-lbl { font-size:0.72rem;color:var(--pw-muted-color,#999);margin:4px 0 0;line-height:1.4 }
+.pcf-chart-wrap { padding:12px 14px 10px;margin-top:12px }
+.pcf-chart-inner { height:72px;position:relative }
+.pcf-chart-inner canvas { position:absolute;inset:0;width:100%;height:100% }
+.pcf-chart-inner #pcf-chart-svg { position:absolute;inset:0 }
 </style>
 
-<div id="pcf-wrap">
+<div>
 
 	<!-- ── Last 24 hours ── -->
-	<div class="pcf-section">Last 24 hours</div>
-	<div class="pcf-grid pcf-g5">
-		<div class="pcf-card">
-			<div class="pcf-val">{$last24['total_requests']}</div>
-			<div class="pcf-lbl">Requests<br><span style="color:#bbb">{$humanReq} human · {$botReq} bot</span></div>
-		</div>
-		<div class="pcf-card">
-			<div class="pcf-val">{$last24['total_co2_g']} g</div>
-			<div class="pcf-lbl">CO₂ total</div>
-		</div>
-		<div class="pcf-card">
-			<div class="pcf-val">{$last24['avg_co2_mg']} mg &nbsp;{$totalBadge}</div>
-			<div class="pcf-lbl">CO₂ / request avg</div>
-		</div>
-		<div class="pcf-card">
-			<div class="pcf-val">{$last24['avg_ms']} ms</div>
-			<div class="pcf-lbl">Avg exec time</div>
-		</div>
-		<div class="pcf-card">
-			<div class="pcf-val">{$last24['avg_kb']} KB</div>
-			<div class="pcf-lbl">Avg response size</div>
-		</div>
+	<p class="uk-text-meta uk-text-uppercase uk-margin-small-bottom" style="letter-spacing:.06em">Last 24 hours</p>
+	<div class="uk-grid-small uk-child-width-1-5@m uk-child-width-1-3@s uk-child-width-1-2" uk-grid>
+		<div><div class="uk-card uk-card-default uk-text-center pcf-card">
+			<p class="pcf-stat-val">{$last24['total_requests']}</p>
+			<p class="pcf-stat-lbl">Requests<br>{$humanReq} human &middot; {$botReq} bot</p>
+		</div></div>
+		<div><div class="uk-card uk-card-default uk-text-center pcf-card">
+			<p class="pcf-stat-val">{$last24['total_co2_g']} g</p>
+			<p class="pcf-stat-lbl">CO₂ total</p>
+		</div></div>
+		<div><div class="uk-card uk-card-default uk-text-center pcf-card">
+			<p class="pcf-stat-val">{$last24['avg_co2_mg']} mg &nbsp;{$totalBadge}</p>
+			<p class="pcf-stat-lbl">CO₂ / request avg</p>
+		</div></div>
+		<div><div class="uk-card uk-card-default uk-text-center pcf-card">
+			<p class="pcf-stat-val">{$last24['avg_ms']} ms</p>
+			<p class="pcf-stat-lbl">Avg exec time</p>
+		</div></div>
+		<div><div class="uk-card uk-card-default uk-text-center pcf-card">
+			<p class="pcf-stat-val">{$last24['avg_kb']} KB</p>
+			<p class="pcf-stat-lbl">Avg response size</p>
+		</div></div>
 	</div>
 
 	<!-- Hourly chart -->
-	<div class="pcf-chart">
-		<div style="font-size:11px;color:#bbb;margin-bottom:8px">CO₂ g/hour — last 24 h</div>
-		<div style="height:72px;position:relative">
-			<canvas id="pcf-chart" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
-			<div id="pcf-chart-svg" style="position:absolute;inset:0"></div>
+	<div class="uk-card uk-card-default uk-card-body pcf-chart-wrap uk-margin-small-top">
+		<p class="uk-text-meta uk-margin-remove" style="margin-bottom:8px">CO₂ g/hour — last 24 h</p>
+		<div class="pcf-chart-inner">
+			<canvas id="pcf-chart"></canvas>
+			<div id="pcf-chart-svg"></div>
 		</div>
 	</div>
 
 	<!-- ── All time ── -->
-	<div class="pcf-section" style="margin-top:28px">All time (raw + aggregated)</div>
-	<div class="pcf-grid pcf-g4">
-		<div class="pcf-card">
-			<div class="pcf-val">{$totalRequests}</div>
-			<div class="pcf-lbl">Total requests</div>
-		</div>
-		<div class="pcf-card">
-			<div class="pcf-val">{$totalCO2kg} kg</div>
-			<div class="pcf-lbl">CO₂ total</div>
-		</div>
-		<div class="pcf-card">
-			<div class="pcf-val">{$avgCO2mg} mg</div>
-			<div class="pcf-lbl">CO₂ / request avg</div>
-		</div>
-		<div class="pcf-card">
-			<div class="pcf-val" style="font-size:1rem">{$sinceFmt}</div>
-			<div class="pcf-lbl">Collecting since</div>
-		</div>
+	<p class="uk-text-meta uk-text-uppercase uk-margin-top uk-margin-small-bottom" style="letter-spacing:.06em">All time (raw + aggregated)</p>
+	<div class="uk-grid-small uk-child-width-1-4@m uk-child-width-1-2" uk-grid>
+		<div><div class="uk-card uk-card-default uk-text-center pcf-card">
+			<p class="pcf-stat-val">{$totalRequests}</p>
+			<p class="pcf-stat-lbl">Total requests</p>
+		</div></div>
+		<div><div class="uk-card uk-card-default uk-text-center pcf-card">
+			<p class="pcf-stat-val">{$totalCO2kg} kg</p>
+			<p class="pcf-stat-lbl">CO₂ total</p>
+		</div></div>
+		<div><div class="uk-card uk-card-default uk-text-center pcf-card">
+			<p class="pcf-stat-val">{$avgCO2mg} mg</p>
+			<p class="pcf-stat-lbl">CO₂ / request avg</p>
+		</div></div>
+		<div><div class="uk-card uk-card-default uk-text-center pcf-card">
+			<p class="pcf-stat-val uk-text-small">{$sinceFmt}</p>
+			<p class="pcf-stat-lbl">Collecting since</p>
+		</div></div>
 	</div>
 
-	<!-- ── Storage info ── -->
-	<div class="pcf-section" style="margin-top:28px">Storage</div>
-	<div class="pcf-grid pcf-g3">
-		<div class="pcf-card">
-			<div class="pcf-val" style="font-size:1.1rem">{$rawRowCount}</div>
-			<div class="pcf-lbl">Raw rows in DB<br><span style="color:#bbb">oldest: {$rawOldest}</span></div>
-		</div>
-		<div class="pcf-card">
-			<div class="pcf-val" style="font-size:1.1rem">{$rawTableMB} MB</div>
-			<div class="pcf-lbl">Raw table size<br><span style="color:#bbb">retention: {$retention} days</span></div>
-		</div>
-		<div class="pcf-card">
-			<div class="pcf-val" style="font-size:1rem">{$lastMaintFmt}</div>
-			<div class="pcf-lbl">Last maintenance<br><span style="color:#bbb">aggr. + pruning</span></div>
-		</div>
+	<!-- ── Real-world analogies ── -->
+	<p class="uk-text-meta uk-text-uppercase uk-margin-top uk-margin-small-bottom" style="letter-spacing:.06em">That's equivalent to…</p>
+	<div class="uk-grid-small uk-child-width-1-4@m uk-child-width-1-2" uk-grid>
+
+		<div><div class="uk-card uk-card-default uk-card-body" style="padding:12px 14px;display:flex;align-items:center;gap:10px">
+			<span style="flex-shrink:0;color:var(--pw-main-color,#eb1d61)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 0 0-3.213-9.193 2.056 2.056 0 0 0-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 0 0-10.026 0 1.106 1.106 0 0 0-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" /></svg></span>
+			<div><p class="pcf-stat-val" style="font-size:1.1rem">{$carKm} km</p><p class="pcf-stat-lbl">driving by car</p></div>
+		</div></div>
+
+		<div><div class="uk-card uk-card-default uk-card-body" style="padding:12px 14px;display:flex;align-items:center;gap:10px">
+			<span style="flex-shrink:0;color:var(--pw-main-color,#eb1d61)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.867 8.21 8.21 0 0 0 3 2.48Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M12 18a3.75 3.75 0 0 0 .495-7.468 5.99 5.99 0 0 0-1.925 3.547 5.975 5.975 0 0 1-2.133-1.001A3.75 3.75 0 0 0 12 18Z" /></svg></span>
+			<div><p class="pcf-stat-val" style="font-size:1.1rem">{$coffees}</p><p class="pcf-stat-lbl">espressos brewed</p></div>
+		</div></div>
+
+		<div><div class="uk-card uk-card-default uk-card-body" style="padding:12px 14px;display:flex;align-items:center;gap:10px">
+			<span style="flex-shrink:0;color:var(--pw-main-color,#eb1d61)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16"><path d="M2 2a.5.5 0 0 0-.5.5v3a2.5 2.5 0 0 0 2.5 2.5h.5a3 3 0 0 0 2.5 2.934V12H5.5a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1H9v-1.066A3 3 0 0 0 11.5 8H12a2.5 2.5 0 0 0 2.5-2.5v-3a.5.5 0 0 0-.5-.5zm0 1h1v3a1.5 1.5 0 0 1-1-1.415zm12 0v1.585A1.5 1.5 0 0 1 13 5V3zM3.5 3h9a.5.5 0 0 1 .5.5V8a2.5 2.5 0 0 1-5 0 .5.5 0 0 0-1 0 2.5 2.5 0 0 1-5 0V3.5a.5.5 0 0 1 .5-.5"/></svg></span>
+			<div><p class="pcf-stat-val" style="font-size:1.1rem">{$kettles}</p><p class="pcf-stat-lbl">kettles boiled</p></div>
+		</div></div>
+
+		<div><div class="uk-card uk-card-default uk-card-body" style="padding:12px 14px;display:flex;align-items:center;gap:10px">
+			<span style="flex-shrink:0;color:var(--pw-main-color,#eb1d61)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 0 0 6 3.75v16.5a2.25 2.25 0 0 0 2.25 2.25h7.5A2.25 2.25 0 0 0 18 20.25V3.75a2.25 2.25 0 0 0-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 8.25h3m-3 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 4.5h3m-6 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0" /></svg></span>
+			<div><p class="pcf-stat-val" style="font-size:1.1rem">{$phones}</p><p class="pcf-stat-lbl">phone charges</p></div>
+		</div></div>
+
+		<div><div class="uk-card uk-card-default uk-card-body" style="padding:12px 14px;display:flex;align-items:center;gap:10px">
+			<span style="flex-shrink:0;color:var(--pw-main-color,#eb1d61)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 20.25h12m-7.5-3v3m3-3v3m-10.125-3h17.25c.621 0 1.125-.504 1.125-1.125V4.875c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125Z" /></svg></span>
+			<div><p class="pcf-stat-val" style="font-size:1.1rem">{$netflix} h</p><p class="pcf-stat-lbl">Netflix HD streaming</p></div>
+		</div></div>
+
+		<div><div class="uk-card uk-card-default uk-card-body" style="padding:12px 14px;display:flex;align-items:center;gap:10px">
+			<span style="flex-shrink:0;color:var(--pw-main-color,#eb1d61)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg></span>
+			<div><p class="pcf-stat-val" style="font-size:1.1rem">{$emails}</p><p class="pcf-stat-lbl">emails sent</p></div>
+		</div></div>
+
+		<div><div class="uk-card uk-card-default uk-card-body" style="padding:12px 14px;display:flex;align-items:center;gap:10px">
+			<span style="flex-shrink:0;color:var(--pw-main-color,#eb1d61)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16"><path d="M8.416.223a.5.5 0 0 0-.832 0l-3 4.5A.5.5 0 0 0 5 5.5h.098L3.076 8.735A.5.5 0 0 0 3.5 9.5h.191l-1.638 3.276a.5.5 0 0 0 .447.724H7V16h2v-2.5h4.5a.5.5 0 0 0 .447-.724L12.31 9.5h.191a.5.5 0 0 0 .424-.765L10.902 5.5H11a.5.5 0 0 0 .416-.777z"/></svg></span>
+			<div><p class="pcf-stat-val" style="font-size:1.1rem">{$trees}</p><p class="pcf-stat-lbl">trees needed 1 year</p></div>
+		</div></div>
+
+		<div><div class="uk-card uk-card-default uk-card-body" style="padding:12px 14px;display:flex;align-items:center;gap:10px">
+			<span style="flex-shrink:0;color:var(--pw-main-color,#eb1d61)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 0 0 1.5-.189m-1.5.189a6.01 6.01 0 0 1-1.5-.189m3.75 7.478a12.06 12.06 0 0 1-4.5 0m3.75 2.383a14.406 14.406 0 0 1-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 1 0-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" /></svg></span>
+			<div><p class="pcf-stat-val" style="font-size:1.1rem">{$bulbHours} h</p><p class="pcf-stat-lbl">LED bulb on</p></div>
+		</div></div>
+
+		<div><div class="uk-card uk-card-default uk-card-body" style="padding:12px 14px;display:flex;align-items:center;gap:10px">
+			<span style="flex-shrink:0;color:var(--pw-main-color,#eb1d61)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 10.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0m5 0a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0"/><path d="M5.066 7.396A2 2 0 0 1 7 6h2a2 2 0 0 1 1.934 1.396l.23.691A1.5 1.5 0 0 1 12.5 9.5h.5a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5H12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2h-.5A.5.5 0 0 1 3 11v-1a.5.5 0 0 1 .5-.5h.5a1.5 1.5 0 0 1 .836-1.341zM7 7a1 1 0 0 0-.966.741L5.5 9.5h5l-.534-1.759A1 1 0 0 0 9 7zm4 5v-1H5v1a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1"/><path d="M6.236 3.446A1.5 1.5 0 0 1 7.5 2.5h1a1.5 1.5 0 0 1 1.264.946l.228.683A2 2 0 0 0 9 4H7a2 2 0 0 0-.992.129zM6 13.5V15h-.25a.75.75 0 0 0 0 1.5h4.5a.75.75 0 0 0 0-1.5H10v-1.5z"/></svg></span>
+			<div><p class="pcf-stat-val" style="font-size:1.1rem">{$subway}</p><p class="pcf-stat-lbl">subway trips</p></div>
+		</div></div>
+
+		<div><div class="uk-card uk-card-default uk-card-body" style="padding:12px 14px;display:flex;align-items:center;gap:10px">
+			<span style="flex-shrink:0;color:var(--pw-main-color,#eb1d61)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m9 9 10.5-3m0 6.553v3.75a2.25 2.25 0 0 1-1.632 2.163l-1.32.377a1.803 1.803 0 1 1-.99-3.467l2.31-.66a2.25 2.25 0 0 0 1.632-2.163Zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 0 1-1.632 2.163l-1.32.377a1.803 1.803 0 0 1-.99-3.467l2.31-.66A2.25 2.25 0 0 0 9 15.553Z" /></svg></span>
+			<div><p class="pcf-stat-val" style="font-size:1.1rem">{$spotify}</p><p class="pcf-stat-lbl">songs streamed</p></div>
+		</div></div>
+
+		<div><div class="uk-card uk-card-default uk-card-body" style="padding:12px 14px;display:flex;align-items:center;gap:10px">
+			<span style="flex-shrink:0;color:var(--pw-main-color,#eb1d61)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg></span>
+			<div><p class="pcf-stat-val" style="font-size:1.1rem">{$flights}</p><p class="pcf-stat-lbl">short-haul flights</p></div>
+		</div></div>
+
+		<div><div class="uk-card uk-card-default uk-card-body" style="padding:12px 14px;display:flex;align-items:center;gap:10px">
+			<span style="flex-shrink:0;color:var(--pw-main-color,#eb1d61)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 15.803 7.5 7.5 0 0 0 15.803 15.803Z" /></svg></span>
+			<div><p class="pcf-stat-val" style="font-size:1.1rem">{$searches}</p><p class="pcf-stat-lbl">Google searches</p></div>
+		</div></div>
+
+	</div>
+
+	<!-- ── Storage ── -->
+	<p class="uk-text-meta uk-text-uppercase uk-margin-top uk-margin-small-bottom" style="letter-spacing:.06em">Storage</p>
+	<div class="uk-grid-small uk-child-width-1-3@s uk-child-width-1-2" uk-grid>
+		<div><div class="uk-card uk-card-default uk-text-center pcf-card">
+			<p class="pcf-stat-val">{$rawRowCount}</p>
+			<p class="pcf-stat-lbl">Raw rows in DB<br>oldest: {$rawOldest}</p>
+		</div></div>
+		<div><div class="uk-card uk-card-default uk-text-center pcf-card">
+			<p class="pcf-stat-val">{$rawTableMB} MB</p>
+			<p class="pcf-stat-lbl">Raw table size<br>retention: {$retention} days</p>
+		</div></div>
+		<div><div class="uk-card uk-card-default uk-text-center pcf-card">
+			<p class="pcf-stat-val uk-text-small">{$lastMaintFmt}</p>
+			<p class="pcf-stat-lbl">Last maintenance<br>aggr. + pruning</p>
+		</div></div>
 	</div>
 
 	<!-- ── Top pages table ── -->
-	<div class="pcf-section" style="margin-top:28px">Top 50 pages by CO₂ — human requests, last {$retention} days</div>
-	<div style="overflow-x:auto">
-		<table class="pcf-table">
+	<p class="uk-text-meta uk-text-uppercase uk-margin-top uk-margin-small-bottom" style="letter-spacing:.06em">Top 50 pages by CO₂ — human requests, last {$retention} days</p>
+	<div class="uk-overflow-auto">
+		<table class="uk-table uk-table-small uk-table-divider uk-table-hover uk-table-striped">
 			<thead>
 				<tr>
 					<th>Page</th>
-					<th class="pcf-tr">CO₂ avg (mg)</th>
-					<th class="pcf-tr">Range (mg)</th>
-					<th class="pcf-tr">Time (ms)</th>
-					<th class="pcf-tr">Size (KB)</th>
-					<th class="pcf-tr">Hits</th>
-					<th style="text-align:center">Rating</th>
+					<th class="uk-text-right">CO₂ avg (mg)</th>
+					<th class="uk-text-right">Range (mg)</th>
+					<th class="uk-text-right">Time (ms)</th>
+					<th class="uk-text-right">Size (KB)</th>
+					<th class="uk-text-right">Hits</th>
+					<th class="uk-text-center">Rating</th>
 					<th>Last seen</th>
 				</tr>
 			</thead>
@@ -448,32 +485,33 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 	</div>
 
 	<!-- ── Footer ── -->
-	<div class="pcf-footer">
-		<div class="pcf-meta">
-			<span>Model: <a href="https://sustainablewebdesign.org/estimating-digital-emissions/" target="_blank" rel="noopener" style="color:#007aff">Sustainable Web Design v4</a>
+	<hr class="uk-margin-top">
+	<div class="uk-flex uk-flex-between uk-flex-wrap uk-flex-middle" style="gap:10px">
+		<p class="uk-text-meta uk-margin-remove" style="line-height:1.9">
+			Model: <a href="https://sustainablewebdesign.org/estimating-digital-emissions/" target="_blank" rel="noopener">Sustainable Web Design v4</a>
 			&middot; Intensity: {$intensity} gCO₂/kWh
-			&middot; A &lt;100 mg &middot; B &lt;300 mg &middot; C &lt;700 mg &middot; D ≥700 mg</span><br>
-			<span>Buffer: <strong style="color:#333">{$bufCount}</strong> pending rows
-			&middot; Next auto-flush at <strong style="color:#333">{$nextFlush}</strong> (hourly)
-			&middot; Bot sampling: 1/{$botSample}</span>
-		</div>
-		<div class="pcf-btns">
-			<a href="{$moduleUrl}" class="uk-button uk-button-primary"><span uk-icon="icon:settings;ratio:0.8"></span> Settings</a>
+			&middot; A &lt;100 mg &middot; B &lt;300 mg &middot; C &lt;700 mg &middot; D ≥700 mg<br>
+			Buffer: <strong>{$bufCount}</strong> pending rows
+			&middot; Next auto-flush at <strong>{$nextFlush}</strong> (hourly)
+			&middot; Bot sampling: 1/{$botSample}
+		</p>
+		<div class="uk-flex uk-flex-wrap" style="gap:6px">
+			<a href="{$moduleUrl}" class="uk-button uk-button-default uk-button-small"><span uk-icon="icon:settings;ratio:0.8"></span> Settings</a>
 			<form method="post" style="margin:0">
 				<input type="hidden" name="pcf_flush" value="1">
-				<button type="submit" class="uk-button uk-button-primary"><span uk-icon="icon:upload;ratio:0.8"></span> Flush buffer</button>
+				<button type="submit" class="uk-button uk-button-default uk-button-small"><span uk-icon="icon:upload;ratio:0.8"></span> Flush buffer</button>
 			</form>
 			<form method="post" style="margin:0">
 				<input type="hidden" name="pcf_maint" value="1">
-				<button type="submit" class="uk-button uk-button-primary"><span uk-icon="icon:cog;ratio:0.8"></span> Run maintenance</button>
+				<button type="submit" class="uk-button uk-button-default uk-button-small"><span uk-icon="icon:cog;ratio:0.8"></span> Run maintenance</button>
 			</form>
 			<form method="post" style="margin:0">
 				<input type="hidden" name="pcf_export" value="1">
-				<button type="submit" class="uk-button uk-button-primary"><span uk-icon="icon:download;ratio:0.8"></span> Export DOCX</button>
+				<button type="submit" class="uk-button uk-button-primary uk-button-small"><span uk-icon="icon:download;ratio:0.8"></span> Export DOCX</button>
 			</form>
 			<form method="post" style="margin:0" onsubmit="return confirm('Delete ALL data including aggregates? This cannot be undone.')">
 				<input type="hidden" name="pcf_clear" value="1">
-				<button type="submit" class="uk-button uk-button-primary"><span uk-icon="icon:trash;ratio:0.8"></span> Clear all data</button>
+				<button type="submit" class="uk-button uk-button-danger uk-button-small"><span uk-icon="icon:trash;ratio:0.8"></span> Clear all data</button>
 			</form>
 		</div>
 	</div>
@@ -495,6 +533,13 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 		return;
 	}
 
+	var mainColor = getComputedStyle(document.documentElement).getPropertyValue('--pw-main-color').trim() || '#eb1d61';
+	function hexToRgb(hex) {
+		var r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+		return r ? parseInt(r[1],16)+','+parseInt(r[2],16)+','+parseInt(r[3],16) : '235,29,97';
+	}
+	var rgb = hexToRgb(mainColor);
+
 	function drawChart() {
 		if (typeof Chart === 'undefined') return false;
 		canvas.style.display = 'block';
@@ -504,11 +549,8 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 				labels: labels,
 				datasets: [{
 					data: vals,
-					backgroundColor: 'rgba(30,150,90,0.22)',
-					borderColor: 'rgba(30,150,90,0.7)',
-					borderWidth: 1,
-					borderRadius: 2,
-					borderSkipped: false
+					backgroundColor: 'rgba('+rgb+',0.7)',
+					borderWidth: 0
 				}]
 			},
 			options: {
@@ -519,7 +561,8 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 					x: { grid: { display: false }, ticks: { font: { size: 9 }, maxTicksLimit: 12, maxRotation: 0 } },
 					y: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { font: { size: 9 }, maxTicksLimit: 4 } }
 				},
-				animation: false, responsive: true, maintainAspectRatio: false
+				animation: { duration: 500, easing: 'easeOutQuart' },
+				responsive: true, maintainAspectRatio: false
 			}
 		});
 		return true;
@@ -532,12 +575,25 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 		var barW = Math.max(1, Math.floor(w / n) - 2);
 		var bars = vals.map(function(v, i) {
 			var bh = Math.max(2, Math.round((v / max) * (h - 4)));
-			return '<rect x="' + Math.round(i*(w/n)) + '" y="' + (h-bh) + '" width="' + barW + '" height="' + bh + '" fill="rgba(30,150,90,0.4)" rx="1"/>';
+			return '<rect x="' + Math.round(i*(w/n)) + '" y="' + (h-bh) + '" width="' + barW + '" height="' + bh + '" fill="rgba('+rgb+',0.7)" rx="1"/>';
 		}).join('');
 		if (svgWrap) svgWrap.innerHTML = '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" style="width:100%;height:100%;display:block">' + bars + '</svg>';
 	}
 
-	if (!drawChart()) setTimeout(function() { if (!drawChart()) drawSVG(); }, 800);
+	function initChart() {
+		if (drawChart()) return;
+		if (!document.getElementById('pcf-chartjs')) {
+			var s = document.createElement('script');
+			s.id  = 'pcf-chartjs';
+			s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js';
+			s.onload = function() { if (!drawChart()) drawSVG(); };
+			s.onerror = drawSVG;
+			document.head.appendChild(s);
+		} else {
+			setTimeout(function() { if (!drawChart()) drawSVG(); }, 800);
+		}
+	}
+	initChart();
 })();
 </script>
 HTML;
@@ -601,7 +657,7 @@ HTML;
 
 		$lastFlush   = (int) ($cache->get(self::CACHE_FLUSH_TS) ?: 0);
 		$shouldFlush = (time() - $lastFlush >= self::FLUSH_INTERVAL)
-		            || (count($buffer) >= self::FLUSH_MAX_ROWS);
+					|| (count($buffer) >= self::FLUSH_MAX_ROWS);
 
 		if($shouldFlush) {
 			$this->flushBuffer($buffer);
@@ -747,17 +803,17 @@ HTML;
 
 			$hourlySum = $db->query("
 				SELECT SUM(requests) AS reqs,
-				       ROUND(SUM(co2_mg_sum)/1000000,6) AS co2_kg,
-				       ROUND(SUM(co2_mg_sum)/NULLIF(SUM(requests),0),2) AS avg_mg,
-				       MIN(hour_start) AS since
+					   ROUND(SUM(co2_mg_sum)/1000000,6) AS co2_kg,
+					   ROUND(SUM(co2_mg_sum)/NULLIF(SUM(requests),0),2) AS avg_mg,
+					   MIN(hour_start) AS since
 				FROM `" . self::TABLE_HOURLY . "`
 			")->fetch(\PDO::FETCH_ASSOC);
 
 			$rawSum = $db->query("
 				SELECT COUNT(*) AS cnt,
-				       ROUND(SUM(co2_mg)/1000000,10) AS co2_kg,
-				       ROUND(AVG(co2_mg),2) AS avg_mg,
-				       MIN(created) AS since
+					   ROUND(SUM(co2_mg)/1000000,10) AS co2_kg,
+					   ROUND(AVG(co2_mg),2) AS avg_mg,
+					   MIN(created) AS since
 				FROM `" . self::TABLE . "`
 			")->fetch(\PDO::FETCH_ASSOC);
 
@@ -772,12 +828,12 @@ HTML;
 
 			$pages = $db->query("
 				SELECT page_path, page_title,
-				       COUNT(*) AS hits,
-				       ROUND(AVG(co2_mg),2) AS avg_co2,
-				       ROUND(MIN(co2_mg),2) AS min_co2,
-				       ROUND(MAX(co2_mg),2) AS max_co2,
-				       ROUND(AVG(exec_ms),1) AS avg_ms,
-				       ROUND(AVG(response_kb),1) AS avg_kb
+					   COUNT(*) AS hits,
+					   ROUND(AVG(co2_mg),2) AS avg_co2,
+					   ROUND(MIN(co2_mg),2) AS min_co2,
+					   ROUND(MAX(co2_mg),2) AS max_co2,
+					   ROUND(AVG(exec_ms),1) AS avg_ms,
+					   ROUND(AVG(response_kb),1) AS avg_kb
 				FROM `" . self::TABLE . "`
 				WHERE is_bot=0 AND created >= NOW() - INTERVAL {$retention} DAY
 				GROUP BY page_path, page_title
