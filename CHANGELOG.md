@@ -8,6 +8,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.6.1] — 2026-05-12
+
+### Fixed
+
+- **Aggregation deduplication** — maintenance no longer re-inserts the same raw rows into `page_carbon_hourly` every run; uses `CACHE_AGG_TS` to track the last aggregated timestamp and processes only the new window (`last_agg_until → now - 24h`)
+- **All-time overlap** — raw table supplement now filters by `created >= agg_from` (the last aggregation boundary), preventing double-counting of hourly + raw data in totals and DOCX export
+
+### Security
+
+- **CSRF protection** — all admin POST actions (flush buffer, run maintenance, export DOCX, clear all data) now require a valid CSRF token; `Session::CSRF` token rendered as hidden input in every form; invalid token aborts with error message
+- **GET export removed** — DOCX export no longer accepts `GET` requests, only `POST`
+
+### Changed
+
+- Chart height increased from 72 px to 120 px for better visibility and readability of the CO₂ g/hour bar chart
+- `ob_end_clean()` now guarded with `ob_get_level()` check in both `PageCarbon.module.php` and `PageCarbonDocx.php` to prevent PHP warnings in edge-case output buffer states
+
+### Removed
+
+- `PageCarbonDocx` docblock version corrected from `1.5.0` to `1.6.0` (alignment with module version)
+
+---
+
 ## [1.6.0] — 2026-04-09
 
 ### Added

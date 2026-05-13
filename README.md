@@ -3,7 +3,7 @@
 A ProcessWire module that tracks per-page resource usage and estimates the CO₂ emissions of every front-end request. Adds a **Setup → PageCarbon** page in the admin with live statistics, an hourly chart, a ranked page table, and real-world CO₂ analogies.
 
 **Author:** [Maxim Alex](https://smnv.org)
-**Version:** 1.6.0
+**Version:** 1.6.1
 **GitHub:** [mxmsmnv/PageCarbon](https://github.com/mxmsmnv/PageCarbon)
 
 ## Features

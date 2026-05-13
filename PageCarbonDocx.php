@@ -13,7 +13,7 @@
  *
  * @author  Maxim Alex <maxim@smnv.org> (smnv.org)
  * @link    https://github.com/mxmsmnv/PageCarbon
- * @version 1.5.0
+ * @version 1.6.1
  */
 class PageCarbonDocx {
 
@@ -54,7 +54,7 @@ class PageCarbonDocx {
 		header('Content-Disposition: attachment; filename="' . $filename . '"');
 		header('Content-Length: ' . filesize($tmp));
 		header('Cache-Control: no-cache, no-store, must-revalidate');
-		ob_end_clean();
+		if(ob_get_level()) ob_end_clean();
 		readfile($tmp);
 		unlink($tmp);
 		exit;

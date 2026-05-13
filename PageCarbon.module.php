@@ -15,7 +15,7 @@
  *
  * @author  Maxim Alex <maxim@smnv.org> (smnv.org)
  * @link    https://github.com/mxmsmnv/PageCarbon
- * @version 1.6.0
+ * @version 1.6.1
  */
 class PageCarbon extends Process implements Module, ConfigurableModule {
 
@@ -24,7 +24,7 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 	public static function getModuleInfo(): array {
 		return [
 			'title'    => 'PageCarbon',
-			'version'  => 160,
+			'version'  => 161,
 			'summary'  => 'Tracks per-page CO₂ emissions. WireCache buffer, bot sampling, 90-day raw retention with permanent hourly aggregates.',
 			'author'   => 'Maxim Alex',
 			'href'     => 'https://github.com/mxmsmnv/PageCarbon',
@@ -54,6 +54,7 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 	const CACHE_BUFFER_KEY = 'PageCarbon_buffer';
 	const CACHE_FLUSH_TS   = 'PageCarbon_last_flush';
 	const CACHE_MAINT_TS   = 'PageCarbon_last_maint';
+	const CACHE_AGG_TS     = 'PageCarbon_last_agg_until';
 
 	/** Seconds between batch INSERTs (1 hour) */
 	const FLUSH_INTERVAL = 3600;
@@ -97,9 +98,19 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 		$input = $this->wire('input');
 		$cache = $this->wire('cache');
 		$db    = $this->wire('database');
+		$session = $this->wire('session');
+
+		$hasPostAction = $input->post('pcf_clear') === '1'
+			|| $input->post('pcf_flush') === '1'
+			|| $input->post('pcf_maint') === '1'
+			|| $input->post('pcf_export') === '1';
+		if($hasPostAction && !$this->hasValidCsrfToken()) {
+			$session->error('Security check failed (CSRF token). Please try again.');
+			$session->redirect('./');
+		}
 
 		// Export DOCX report
-		if($input->post('pcf_export') === '1' || $input->get('pcf_export') === '1') {
+		if($input->post('pcf_export') === '1') {
 			return $this->___executeExport();
 		}
 
@@ -110,6 +121,7 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 			$cache->delete(self::CACHE_BUFFER_KEY);
 			$cache->delete(self::CACHE_FLUSH_TS);
 			$cache->delete(self::CACHE_MAINT_TS);
+			$cache->delete(self::CACHE_AGG_TS);
 			$this->wire('session')->message('All PageCarbon data cleared.');
 			$this->wire('session')->redirect('./');
 		}
@@ -161,14 +173,17 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 			")->fetch(\PDO::FETCH_ASSOC);
 
 			// Supplement with raw rows not yet aggregated
-			$rawExtra = $db->query("
+			$rawExtraStmt = $db->prepare("
 				SELECT
 					COUNT(*)                          AS cnt,
 					ROUND(SUM(co2_mg) / 1000000, 10) AS co2_kg_raw,
 					ROUND(SUM(co2_mg), 4)             AS co2_mg_sum,
 					MIN(created)                      AS since_raw
 				FROM `" . self::TABLE . "`
-			")->fetch(\PDO::FETCH_ASSOC);
+				WHERE created >= :agg_from
+			");
+			$rawExtraStmt->execute([':agg_from' => $this->getRawOverlapStart()]);
+			$rawExtra = $rawExtraStmt->fetch(\PDO::FETCH_ASSOC);
 
 			$totalRequests = (int) $alltime['total_requests'] + (int) $rawExtra['cnt'];
 			$totalCO2kg    = round((float) $alltime['total_co2_kg'] + (float) $rawExtra['co2_kg_raw'], 6);
@@ -244,6 +259,7 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 		$botSample  = max(1, (int) ($this->get('bot_sample_rate') ?: 10));
 		$intensity  = (int) ($this->get('carbon_intensity') ?: self::DEFAULT_CARBON_INTENSITY);
 		$moduleUrl  = $this->wire('config')->urls->admin . 'module/edit?name=PageCarbon';
+		$csrfInput  = $session->CSRF ? $session->CSRF->renderInput() : '';
 
 		// Buffer status
 		$rawBuf      = $this->wire('cache')->get(self::CACHE_BUFFER_KEY);
@@ -265,11 +281,13 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 		foreach($pages as $p) {
 			$badge    = $this->co2Badge((float) $p['avg_co2']);
 			$lastSeen = $p['last_seen'] ? date('d M Y, H:i', strtotime($p['last_seen'])) : '—';
+			$titleEsc = htmlspecialchars((string) $p['page_title'], ENT_QUOTES, 'UTF-8');
+			$pathEsc  = htmlspecialchars((string) $p['page_path'], ENT_QUOTES, 'UTF-8');
 			$pageRows .= "
 				<tr>
 					<td>
-						<a href='{$p['page_path']}' target='_blank' rel='noopener'><strong>{$p['page_title']}</strong></a>
-						<br><span class='uk-text-meta uk-text-small'>{$p['page_path']}</span>
+						<a href='{$pathEsc}' target='_blank' rel='noopener'><strong>{$titleEsc}</strong></a>
+						<br><span class='uk-text-meta uk-text-small'>{$pathEsc}</span>
 					</td>
 					<td class='uk-text-right'>{$p['avg_co2']}</td>
 					<td class='uk-text-right uk-text-meta uk-text-small'>{$p['min_co2']} – {$p['max_co2']}</td>
@@ -318,8 +336,8 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 }
 .pcf-stat-val { font-size:1.35rem;font-weight:700;line-height:1.2;margin:0;white-space:nowrap }
 .pcf-stat-lbl { font-size:0.72rem;color:var(--pw-muted-color,#999);margin:4px 0 0;line-height:1.4 }
-.pcf-chart-wrap { padding:12px 14px 10px;margin-top:12px }
-.pcf-chart-inner { height:72px;position:relative }
+.pcf-chart-wrap { padding:16px 16px 14px;margin-top:12px }
+.pcf-chart-inner { height:120px;position:relative }
 .pcf-chart-inner canvas { position:absolute;inset:0;width:100%;height:100% }
 .pcf-chart-inner #pcf-chart-svg { position:absolute;inset:0 }
 </style>
@@ -498,18 +516,22 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 		<div class="uk-flex uk-flex-wrap" style="gap:6px">
 			<a href="{$moduleUrl}" class="uk-button uk-button-default uk-button-small"><span uk-icon="icon:settings;ratio:0.8"></span> Settings</a>
 			<form method="post" style="margin:0">
+				{$csrfInput}
 				<input type="hidden" name="pcf_flush" value="1">
 				<button type="submit" class="uk-button uk-button-default uk-button-small"><span uk-icon="icon:upload;ratio:0.8"></span> Flush buffer</button>
 			</form>
 			<form method="post" style="margin:0">
+				{$csrfInput}
 				<input type="hidden" name="pcf_maint" value="1">
 				<button type="submit" class="uk-button uk-button-default uk-button-small"><span uk-icon="icon:cog;ratio:0.8"></span> Run maintenance</button>
 			</form>
 			<form method="post" style="margin:0">
+				{$csrfInput}
 				<input type="hidden" name="pcf_export" value="1">
 				<button type="submit" class="uk-button uk-button-primary uk-button-small"><span uk-icon="icon:download;ratio:0.8"></span> Export DOCX</button>
 			</form>
 			<form method="post" style="margin:0" onsubmit="return confirm('Delete ALL data including aggregates? This cannot be undone.')">
+				{$csrfInput}
 				<input type="hidden" name="pcf_clear" value="1">
 				<button type="submit" class="uk-button uk-button-danger uk-button-small"><span uk-icon="icon:trash;ratio:0.8"></span> Clear all data</button>
 			</form>
@@ -570,7 +592,7 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 
 	function drawSVG() {
 		canvas.style.display = 'none';
-		var w = 800, h = 60, n = vals.length;
+		var w = 800, h = 120, n = vals.length;
 		var max = Math.max.apply(null, vals.concat([0.001]));
 		var barW = Math.max(1, Math.floor(w / n) - 2);
 		var bars = vals.map(function(v, i) {
@@ -718,10 +740,20 @@ HTML;
 
 		$db        = $this->wire('database');
 		$retention = max(1, (int) ($this->get('retention_days') ?: 90));
+		$aggUntilTs = time() - 86400;
+		$aggUntil   = date('Y-m-d H:i:s', $aggUntilTs);
+		$lastAggTs  = (int) ($cache->get(self::CACHE_AGG_TS) ?: 0);
+
+		if($lastAggTs && $lastAggTs >= $aggUntilTs) {
+			$cache->save(self::CACHE_MAINT_TS, (string) time(), WireCache::expireNever);
+			return;
+		}
+
+		$ok = true;
 
 		try {
-			// Aggregate raw rows older than 24 h into hourly table
-			$db->exec("
+			$whereFrom = $lastAggTs ? 'AND created >= :agg_from' : '';
+			$sql = "
 				INSERT INTO `" . self::TABLE_HOURLY . "`
 					(page_path, page_title, hour_start, requests, co2_mg_sum, co2_mg_avg,
 					 exec_ms_avg, response_kb_avg, is_bot)
@@ -736,7 +768,8 @@ HTML;
 					ROUND(AVG(response_kb), 3)                AS response_kb_avg,
 					is_bot
 				FROM `" . self::TABLE . "`
-				WHERE created < NOW() - INTERVAL 24 HOUR
+				WHERE created < :agg_until
+				  {$whereFrom}
 				GROUP BY page_path, page_title, hour_start, is_bot
 				ON DUPLICATE KEY UPDATE
 					requests        = requests        + VALUES(requests),
@@ -744,7 +777,11 @@ HTML;
 					co2_mg_avg      = ROUND((co2_mg_sum + VALUES(co2_mg_sum)) / (requests + VALUES(requests)), 4),
 					exec_ms_avg     = ROUND((exec_ms_avg * requests + VALUES(exec_ms_avg) * VALUES(requests)) / (requests + VALUES(requests)), 2),
 					response_kb_avg = ROUND((response_kb_avg * requests + VALUES(response_kb_avg) * VALUES(requests)) / (requests + VALUES(requests)), 3)
-			");
+			";
+			$stmt = $db->prepare($sql);
+			$params = [':agg_until' => $aggUntil];
+			if($lastAggTs) $params[':agg_from'] = date('Y-m-d H:i:s', $lastAggTs);
+			$stmt->execute($params);
 
 			// Delete raw rows older than retention window
 			$db->exec("
@@ -754,9 +791,13 @@ HTML;
 
 		} catch(\Exception $e) {
 			// Maintenance failure is non-critical
+			$ok = false;
 		}
 
 		$cache->save(self::CACHE_MAINT_TS, (string) time(), WireCache::expireNever);
+		if($ok) {
+			$cache->save(self::CACHE_AGG_TS, (string) $aggUntilTs, WireCache::expireNever);
+		}
 	}
 
 	// ── CO₂ estimation ────────────────────────────────────────────────────────
@@ -809,13 +850,16 @@ HTML;
 				FROM `" . self::TABLE_HOURLY . "`
 			")->fetch(\PDO::FETCH_ASSOC);
 
-			$rawSum = $db->query("
+			$rawSumStmt = $db->prepare("
 				SELECT COUNT(*) AS cnt,
 					   ROUND(SUM(co2_mg)/1000000,10) AS co2_kg,
 					   ROUND(AVG(co2_mg),2) AS avg_mg,
 					   MIN(created) AS since
 				FROM `" . self::TABLE . "`
-			")->fetch(\PDO::FETCH_ASSOC);
+				WHERE created >= :agg_from
+			");
+			$rawSumStmt->execute([':agg_from' => $this->getRawOverlapStart()]);
+			$rawSum = $rawSumStmt->fetch(\PDO::FETCH_ASSOC);
 
 			$totalReqs  = (int) $hourlySum['reqs'] + (int) $rawSum['cnt'];
 			$totalCO2kg = round((float) $hourlySum['co2_kg'] + (float) $rawSum['co2_kg'], 6);
@@ -862,9 +906,37 @@ HTML;
 			'top_pages' => $pages,
 		]);
 
-		ob_end_clean();
+		if(ob_get_level()) ob_end_clean();
 		$docx->download('pagecarbon-report-' . date('Y-m-d') . '.docx');
 		return ''; // never reached
+	}
+
+	protected function getRawOverlapStart(): string {
+		$aggTs = (int) ($this->wire('cache')->get(self::CACHE_AGG_TS) ?: 0);
+		if($aggTs < 1) $aggTs = time() - 86400;
+		return date('Y-m-d H:i:s', $aggTs);
+	}
+
+	protected function hasValidCsrfToken(): bool {
+		$csrf = $this->wire('session')->CSRF;
+		if(!$csrf) return true;
+
+		try {
+			if(method_exists($csrf, 'hasValidToken') && $csrf->hasValidToken()) return true;
+		} catch(\Throwable $e) {
+			// Fall through to validate()
+		}
+
+		try {
+			if(method_exists($csrf, 'validate')) {
+				$csrf->validate();
+				return true;
+			}
+		} catch(\Throwable $e) {
+			return false;
+		}
+
+		return false;
 	}
 
 	// ── Frontend API ──────────────────────────────────────────────────────────
@@ -1024,5 +1096,6 @@ HTML;
 		$cache->delete(self::CACHE_BUFFER_KEY);
 		$cache->delete(self::CACHE_FLUSH_TS);
 		$cache->delete(self::CACHE_MAINT_TS);
+		$cache->delete(self::CACHE_AGG_TS);
 	}
 }
