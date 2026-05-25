@@ -8,6 +8,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.7.0] — 2026-05-25
+
+### Added
+
+- **Rating-coloured bar chart** — each hourly bar is now coloured by the average CO₂/request for that hour (A=green, B=yellow, C=orange, D=red), so optimisation gains are immediately visible as bars turn greener over time
+- **Colour legend** — A/B/C/D chips with mg thresholds displayed above the chart
+- **Richer tooltip** — hovering a bar now shows total g CO₂, avg mg/request, and Grade alongside the existing value
+- SVG fallback renderer also uses per-bar rating colours
+
+---
+
+## [1.6.2] — 2026-05-25
+
+### Fixed
+
+- **CO₂ total scientific notation** — all-time CO₂ total in the dashboard and DOCX export no longer renders as `9.0E-6 kg` for small values; new `formatCO2kg()` helper auto-scales the display unit to µg / mg / g / kg based on magnitude
+
+---
+
 ## [1.6.1] — 2026-05-12
 
 ### Fixed

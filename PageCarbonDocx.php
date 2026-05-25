@@ -13,7 +13,7 @@
  *
  * @author  Maxim Alex <maxim@smnv.org> (smnv.org)
  * @link    https://github.com/mxmsmnv/PageCarbon
- * @version 1.6.1
+ * @version 1.6.2
  */
 class PageCarbonDocx {
 
@@ -87,6 +87,15 @@ class PageCarbonDocx {
 
 	protected function x(string $s): string {
 		return htmlspecialchars($s, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+	}
+
+	protected static function formatCO2kg(float $kg): string {
+		$mg = $kg * 1e6;
+		if($mg < 1)    return round($kg * 1e9, 2) . ' µg';
+		if($mg < 1000) return round($mg, 2) . ' mg';
+		$g = $kg * 1000;
+		if($g < 1000)  return round($g, 4) . ' g';
+		return round($kg, 4) . ' kg';
 	}
 
 	protected function rating(float $mg): array {
@@ -365,7 +374,7 @@ class PageCarbonDocx {
 			$this->spacer(80) .
 			$this->summaryTable([
 				['Total requests',        $sAll['total_requests'] ?? '0'],
-				['CO2 total',             ($sAll['total_co2_kg']  ?? '0') . ' kg'],
+				['CO2 total',             self::formatCO2kg((float)($sAll['total_co2_kg'] ?? 0))],
 				['CO2 per request (avg)', ($sAll['avg_co2_mg']    ?? '0') . ' mg'],
 				['Rating',                $rAll],
 				['Collecting since',      $sAll['since']          ?? '-'],

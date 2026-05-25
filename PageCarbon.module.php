@@ -15,7 +15,7 @@
  *
  * @author  Maxim Alex <maxim@smnv.org> (smnv.org)
  * @link    https://github.com/mxmsmnv/PageCarbon
- * @version 1.6.1
+ * @version 1.7.0
  */
 class PageCarbon extends Process implements Module, ConfigurableModule {
 
@@ -24,7 +24,7 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 	public static function getModuleInfo(): array {
 		return [
 			'title'    => 'PageCarbon',
-			'version'  => 161,
+			'version'  => 170,
 			'summary'  => 'Tracks per-page CO₂ emissions. WireCache buffer, bot sampling, 90-day raw retention with permanent hourly aggregates.',
 			'author'   => 'Maxim Alex',
 			'href'     => 'https://github.com/mxmsmnv/PageCarbon',
@@ -301,19 +301,26 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 
 		// Trend chart — fill all 24 h with zeros for missing hours
 		$trendMap = [];
-		foreach($trend as $t) $trendMap[$t['hour']] = (float) $t['co2_g'];
-		$allHours = []; $allVals = [];
+		$hitsMap  = [];
+		foreach($trend as $t) {
+			$trendMap[$t['hour']] = (float) $t['co2_g'];
+			$hitsMap[$t['hour']]  = (int) $t['hits'];
+		}
+		$allHours = []; $allVals = []; $allHits = [];
 		for($h = 0; $h < 24; $h++) {
 			$label      = sprintf('%02d:00', $h);
 			$allHours[] = $label;
 			$allVals[]  = $trendMap[$label] ?? 0;
+			$allHits[]  = $hitsMap[$label]  ?? 0;
 		}
 		$trendJSON   = json_encode($allVals);
+		$hitsJSON    = json_encode($allHits);
 		$trendLabels = json_encode($allHours);
 		$hasAnyData  = (bool) array_sum($allVals);
 
 		// ── Real-world analogies for total CO₂ ──────────────────────────────
-		$co2g      = $totalCO2kg * 1000;
+		$totalCO2fmt = $this->formatCO2kg($totalCO2kg);
+		$co2g        = $totalCO2kg * 1000;
 		$carKm     = round($co2g / 120, 1);      // petrol car avg EU
 		$coffees   = (int) round($co2g / 28);    // espresso
 		$kettles   = (int) round($co2g / 32);    // 1L boil
@@ -371,7 +378,16 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 
 	<!-- Hourly chart -->
 	<div class="uk-card uk-card-default uk-card-body pcf-chart-wrap uk-margin-small-top">
-		<p class="uk-text-meta uk-margin-remove" style="margin-bottom:8px">CO₂ g/hour — last 24 h</p>
+		<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+			<p class="uk-text-meta uk-margin-remove">CO₂ g/hour — last 24 h</p>
+			<span style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
+				<span style="font-size:10px;color:#aaa;margin-right:2px">avg/request:</span>
+				<span style="background:#38a169;color:#fff;border-radius:3px;padding:1px 6px;font-size:10px;font-weight:700">A &lt;100 mg</span>
+				<span style="background:#d69e2e;color:#fff;border-radius:3px;padding:1px 6px;font-size:10px;font-weight:700">B &lt;300 mg</span>
+				<span style="background:#dd6b20;color:#fff;border-radius:3px;padding:1px 6px;font-size:10px;font-weight:700">C &lt;700 mg</span>
+				<span style="background:#e53e3e;color:#fff;border-radius:3px;padding:1px 6px;font-size:10px;font-weight:700">D ≥700 mg</span>
+			</span>
+		</div>
 		<div class="pcf-chart-inner">
 			<canvas id="pcf-chart"></canvas>
 			<div id="pcf-chart-svg"></div>
@@ -386,7 +402,7 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 			<p class="pcf-stat-lbl">Total requests</p>
 		</div></div>
 		<div><div class="uk-card uk-card-default uk-text-center pcf-card">
-			<p class="pcf-stat-val">{$totalCO2kg} kg</p>
+			<p class="pcf-stat-val">{$totalCO2fmt}</p>
 			<p class="pcf-stat-lbl">CO₂ total</p>
 		</div></div>
 		<div><div class="uk-card uk-card-default uk-text-center pcf-card">
@@ -543,6 +559,7 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 <script>
 (function() {
 	var vals    = {$trendJSON};
+	var hits    = {$hitsJSON};
 	var labels  = {$trendLabels};
 	var hasData = {$hasAnyData};
 	var canvas  = document.getElementById('pcf-chart');
@@ -555,12 +572,27 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 		return;
 	}
 
-	var mainColor = getComputedStyle(document.documentElement).getPropertyValue('--pw-main-color').trim() || '#eb1d61';
-	function hexToRgb(hex) {
-		var r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-		return r ? parseInt(r[1],16)+','+parseInt(r[2],16)+','+parseInt(r[3],16) : '235,29,97';
+	var GRADE = {A:'#38a169',B:'#d69e2e',C:'#dd6b20',D:'#e53e3e'};
+
+	function barGrade(v, h) {
+		if (!h) return null;
+		var mg = v * 1000 / h;
+		if (mg < 100) return 'A';
+		if (mg < 300) return 'B';
+		if (mg < 700) return 'C';
+		return 'D';
 	}
-	var rgb = hexToRgb(mainColor);
+
+	function gradeColor(v, h, alpha) {
+		var g = barGrade(v, h);
+		if (!g) return 'rgba(0,0,0,0.1)';
+		var hex = GRADE[g];
+		var r = parseInt(hex.slice(1,3),16), gv = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+		return 'rgba('+r+','+gv+','+b+','+(alpha||0.75)+')';
+	}
+
+	var bgColors    = vals.map(function(v,i) { return gradeColor(v, hits[i], 0.75); });
+	var hoverColors = vals.map(function(v,i) { return gradeColor(v, hits[i], 1); });
 
 	function drawChart() {
 		if (typeof Chart === 'undefined') return false;
@@ -571,13 +603,19 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 				labels: labels,
 				datasets: [{
 					data: vals,
-					backgroundColor: 'rgba('+rgb+',0.7)',
+					backgroundColor: bgColors,
+					hoverBackgroundColor: hoverColors,
 					borderWidth: 0
 				}]
 			},
 			options: {
 				plugins: { legend: { display: false }, tooltip: {
-					callbacks: { label: function(c) { return c.parsed.y.toFixed(4) + ' g CO₂'; } }
+					callbacks: { label: function(c) {
+						var i = c.dataIndex, g = barGrade(vals[i], hits[i]);
+						var avg = hits[i] ? (vals[i] * 1000 / hits[i]).toFixed(2) + ' mg avg' : '';
+						var grade = g ? '  ·  Grade ' + g : '';
+						return c.parsed.y.toFixed(4) + ' g CO₂' + (avg ? '  ·  ' + avg : '') + grade;
+					}}
 				}},
 				scales: {
 					x: { grid: { display: false }, ticks: { font: { size: 9 }, maxTicksLimit: 12, maxRotation: 0 } },
@@ -597,7 +635,7 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 		var barW = Math.max(1, Math.floor(w / n) - 2);
 		var bars = vals.map(function(v, i) {
 			var bh = Math.max(2, Math.round((v / max) * (h - 4)));
-			return '<rect x="' + Math.round(i*(w/n)) + '" y="' + (h-bh) + '" width="' + barW + '" height="' + bh + '" fill="rgba('+rgb+',0.7)" rx="1"/>';
+			return '<rect x="' + Math.round(i*(w/n)) + '" y="' + (h-bh) + '" width="' + barW + '" height="' + bh + '" fill="' + gradeColor(v, hits[i], 0.75) + '" rx="1"/>';
 		}).join('');
 		if (svgWrap) svgWrap.innerHTML = '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" style="width:100%;height:100%;display:block">' + bars + '</svg>';
 	}
@@ -813,6 +851,15 @@ HTML;
 	}
 
 	// ── CO₂ rating badge ──────────────────────────────────────────────────────
+
+	protected function formatCO2kg(float $kg): string {
+		$mg = $kg * 1e6;
+		if($mg < 1)        return round($kg * 1e9, 2) . ' µg';
+		if($mg < 1000)     return round($mg, 2) . ' mg';
+		$g = $kg * 1000;
+		if($g < 1000)      return round($g, 4) . ' g';
+		return round($kg, 4) . ' kg';
+	}
 
 	protected function co2Badge(float $mg): string {
 		if($mg < 100) return '<span class="uk-badge" style="background:#38a169;padding:3px 8px">A</span>';
