@@ -3,7 +3,6 @@
 A ProcessWire module that tracks per-page resource usage and estimates the CO₂ emissions of every front-end request. Adds a **Setup → PageCarbon** page in the admin with live statistics, an hourly chart, a ranked page table, and real-world CO₂ analogies.
 
 **Author:** [Maxim Alex](https://smnv.org)
-**Version:** 1.6.1
 **GitHub:** [mxmsmnv/PageCarbon](https://github.com/mxmsmnv/PageCarbon)
 
 ## Features
@@ -15,8 +14,8 @@ A ProcessWire module that tracks per-page resource usage and estimates the CO₂
 - **Bot sampling** — only 1-in-N bot requests are recorded; human requests always recorded in full
 - **90-day raw retention** — raw rows are pruned automatically; historical data is preserved forever in a compact hourly aggregate table
 - **Daily maintenance** runs automatically: aggregates raw data into `page_carbon_hourly`, then prunes old raw rows
-- Hourly CO₂ bar chart for the last 24 hours (Chart.js loaded on demand, SVG fallback if unavailable)
-- All-time totals combine raw + aggregate tables seamlessly
+- Hourly CO₂ bar chart for the last 24 hours — bars coloured **A/B/C/D** by average CO₂/request, so optimisation gains are immediately visible; tooltip shows avg mg/request and Grade; SVG fallback if Chart.js unavailable
+- All-time totals combine raw + aggregate tables seamlessly; CO₂ total auto-scales to µg / mg / g / kg
 - **Real-world analogies** — all-time CO₂ total translated into 12 everyday equivalents (car km, espressos, kettles, phone charges, Netflix hours, emails, trees, LED bulb hours, subway trips, songs streamed, flights, Google searches)
 - Top 50 pages table: CO₂ avg, range, exec time, response size, hits, rating, last seen
 - Manual controls: Flush buffer, Run maintenance, Clear all data
