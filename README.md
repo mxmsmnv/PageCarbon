@@ -5,6 +5,8 @@ A ProcessWire module that tracks per-page resource usage and estimates the CO₂
 **Author:** [Maxim Alex](https://smnv.org)
 **GitHub:** [mxmsmnv/PageCarbon](https://github.com/mxmsmnv/PageCarbon)
 
+If this project helps your work, consider supporting future development: [GitHub Sponsors](https://github.com/sponsors/mxmsmnv) or [smnv.org/sponsor](https://smnv.org/sponsor/).  
+
 ## Features
 
 - Estimates CO₂ emissions per request using the Sustainable Web Design Model v4
