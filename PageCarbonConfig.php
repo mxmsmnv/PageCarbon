@@ -5,7 +5,7 @@
  *
  * Module configuration fields.
  *
- * @author Maxim Alex <maxim@smnv.org> (smnv.org)
+ * @author Maxim Semenov <maxim@smnv.org> (smnv.org)
  * @link   https://github.com/mxmsmnv/PageCarbon
  */
 class PageCarbonConfig extends ModuleConfig {

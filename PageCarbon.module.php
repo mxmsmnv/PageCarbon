@@ -13,7 +13,7 @@
  *   - Bot sampling: only 1-in-N bot requests are recorded (configurable)
  *   - WireCache buffer: batch INSERT to DB every hour (or 500 rows max)
  *
- * @author  Maxim Alex <maxim@smnv.org> (smnv.org)
+ * @author  Maxim Semenov <maxim@smnv.org> (smnv.org)
  * @link    https://github.com/mxmsmnv/PageCarbon
  * @version 1.7.0
  */
@@ -26,8 +26,8 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 			'title'    => 'PageCarbon',
 			'version'  => 170,
 			'summary'  => 'Tracks per-page CO₂ emissions. WireCache buffer, bot sampling, 90-day raw retention with permanent hourly aggregates.',
-			'author'   => 'Maxim Alex',
-			'href'     => 'https://github.com/mxmsmnv/PageCarbon',
+			'author'   => 'Maxim Semenov',
+			'href'     => 'https://smnv.org',
 			'icon'     => 'leaf',
 			'autoload' => true,
 			'singular' => true,

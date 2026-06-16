@@ -11,7 +11,7 @@
  *   $docx = new PageCarbonDocx($data);
  *   $docx->download('pagecarbon-report-2026-03-12.docx');
  *
- * @author  Maxim Alex <maxim@smnv.org> (smnv.org)
+ * @author  Maxim Semenov <maxim@smnv.org> (smnv.org)
  * @link    https://github.com/mxmsmnv/PageCarbon
  * @version 1.6.2
  */

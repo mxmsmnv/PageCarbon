@@ -4,7 +4,7 @@ All notable changes to PageCarbon are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-**Author:** [Maxim Alex](https://smnv.org) · [GitHub](https://github.com/mxmsmnv/PageCarbon)
+**Author:** [Maxim Semenov](https://smnv.org) · [GitHub](https://github.com/mxmsmnv/PageCarbon)
 
 ---
 
