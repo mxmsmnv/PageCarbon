@@ -8,6 +8,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.7.1] — 2026-09-26
+
+### Fixed
+
+- The dashboard now loads on SQLite and PostgreSQL instead of sending a MySQL
+  `information_schema` query through ProcessWire's SQL translator.
+- Row count and oldest-record statistics use a portable table query. Physical
+  table size remains available on MySQL and is shown as unavailable on other
+  database engines, where storage accounting is not comparable.
+
 ## [1.7.0] — 2026-05-25
 
 ### Added

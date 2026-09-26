@@ -15,7 +15,7 @@
  *
  * @author  Maxim Semenov <maxim@smnv.org> (smnv.org)
  * @link    https://github.com/mxmsmnv/PageCarbon
- * @version 1.7.0
+ * @version 1.7.1
  */
 class PageCarbon extends Process implements Module, ConfigurableModule {
 
@@ -24,7 +24,7 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 	public static function getModuleInfo(): array {
 		return [
 			'title'    => 'PageCarbon',
-			'version'  => 170,
+			'version'  => 171,
 			'summary'  => 'Tracks per-page CO₂ emissions. WireCache buffer, bot sampling, 90-day raw retention with permanent hourly aggregates.',
 			'author'   => 'Maxim Semenov',
 			'href'     => 'https://smnv.org',
@@ -228,17 +228,26 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 			")->fetchAll(\PDO::FETCH_ASSOC);
 
 			// ── Raw table storage stats ───────────────────────────────────────
+			// Row count and oldest record are portable. Physical table size is a
+			// MySQL-only enhancement because SQLite and PostgreSQL account for
+			// storage differently and ProcessWire exposes no cross-driver metric.
 			$rawStats = $db->query("
-				SELECT
-					COUNT(*)   AS row_count,
-					MIN(created) AS oldest,
-					ROUND(data_length + index_length, 0) AS bytes
-				FROM information_schema.TABLES, `" . self::TABLE . "`
-				WHERE table_schema = DATABASE()
-				  AND table_name   = '" . self::TABLE . "'
-				GROUP BY table_schema
-				LIMIT 1
-			")->fetch(\PDO::FETCH_ASSOC);
+				SELECT COUNT(*) AS row_count, MIN(created) AS oldest
+				FROM `" . self::TABLE . "`
+			")->fetch(\PDO::FETCH_ASSOC) ?: [];
+			$rawStats['bytes'] = null;
+			$dialect = method_exists($db, 'dialect') ? (string) $db->dialect()->name() : 'mysql';
+			if($dialect === 'mysql') {
+				$sizeStmt = $db->prepare("
+					SELECT ROUND(data_length + index_length, 0)
+					FROM information_schema.TABLES
+					WHERE table_schema = DATABASE() AND table_name = :table
+					LIMIT 1
+				");
+				$sizeStmt->execute([':table' => self::TABLE]);
+				$size = $sizeStmt->fetchColumn();
+				if($size !== false) $rawStats['bytes'] = (int) $size;
+			}
 
 		} catch(\Exception $e) {
 			return '<div class="uk-alert uk-alert-danger" uk-alert><p>Database error: ' . htmlspecialchars($e->getMessage()) . '</p></div>';
@@ -269,7 +278,7 @@ class PageCarbon extends Process implements Module, ConfigurableModule {
 
 		// Table size
 		$rawRowCount = number_format((int) ($rawStats['row_count'] ?? 0));
-		$rawTableMB  = isset($rawStats['bytes']) ? round($rawStats['bytes'] / 1048576, 2) : '?';
+		$rawTableMB  = $rawStats['bytes'] !== null ? round($rawStats['bytes'] / 1048576, 2) : '?';
 		$rawOldest   = isset($rawStats['oldest']) ? date('d M Y', strtotime($rawStats['oldest'])) : '—';
 
 		// Last maint
